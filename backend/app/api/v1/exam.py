@@ -4,12 +4,18 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, File, UploadFile, status
 
 from app.api.deps import DB, TeacherUser
 from app.domain.models.exam import BankStatus
-from app.domain.services import exam_bank_service
-from app.schemas.exam import ExamBankCreate, ExamBankResponse, ExamBankUpdate
+from app.domain.services import exam_bank_service, exam_source_service
+from app.infrastructure.storage import get_exam_storage
+from app.schemas.exam import (
+    ExamBankCreate,
+    ExamBankResponse,
+    ExamBankUpdate,
+    ExamSourceResponse,
+)
 
 router = APIRouter(prefix="/exam", tags=["exam"])
 
@@ -82,3 +88,63 @@ async def delete_exam_bank(
 ) -> None:
     org_id = uuid.UUID(user.org_id) if user.org_id else uuid.UUID(int=0)
     await exam_bank_service.delete_bank(db, bank_id=bank_id, org_id=org_id)
+
+
+# ---------------------------------------------------------------------------
+# E1-1 (FR-1.0): ExamSource — PDF upload + extraction
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/banks/{bank_id}/sources",
+    response_model=ExamSourceResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def upload_exam_source(
+    bank_id: uuid.UUID,
+    db: DB,
+    user: TeacherUser,
+    file: UploadFile = File(...),
+) -> ExamSourceResponse:
+    """Upload a source document (PDF/Word) to an exam bank.
+
+    The file is stored in MinIO and an async extraction task is enqueued.
+    Poll the returned source's `extraction_status` until `done`.
+    """
+    org_id = uuid.UUID(user.org_id) if user.org_id else uuid.UUID(int=0)
+    file_bytes = await file.read()
+    source = await exam_source_service.upload_source(
+        db,
+        bank_id=bank_id,
+        org_id=org_id,
+        filename=file.filename or "document",
+        content_type=file.content_type or "application/octet-stream",
+        file_bytes=file_bytes,
+        storage=get_exam_storage(),
+    )
+    return ExamSourceResponse.model_validate(source)
+
+
+@router.get("/banks/{bank_id}/sources", response_model=list[ExamSourceResponse])
+async def list_exam_sources(
+    bank_id: uuid.UUID,
+    db: DB,
+    user: TeacherUser,
+) -> list[ExamSourceResponse]:
+    org_id = uuid.UUID(user.org_id) if user.org_id else uuid.UUID(int=0)
+    sources = await exam_source_service.list_sources(db, bank_id=bank_id, org_id=org_id)
+    return [ExamSourceResponse.model_validate(s) for s in sources]
+
+
+@router.get("/banks/{bank_id}/sources/{source_id}", response_model=ExamSourceResponse)
+async def get_exam_source(
+    bank_id: uuid.UUID,
+    source_id: uuid.UUID,
+    db: DB,
+    user: TeacherUser,
+) -> ExamSourceResponse:
+    org_id = uuid.UUID(user.org_id) if user.org_id else uuid.UUID(int=0)
+    source = await exam_source_service.get_source(
+        db, source_id=source_id, bank_id=bank_id, org_id=org_id
+    )
+    return ExamSourceResponse.model_validate(source)

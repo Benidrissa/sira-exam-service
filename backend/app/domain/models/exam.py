@@ -87,6 +87,7 @@ class ExamSource(Base):
         nullable=False,
         default=ExtractionStatus.pending,
     )
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     bank: Mapped[ExamBank] = relationship("ExamBank", back_populates="sources")
@@ -305,6 +306,7 @@ class DissertationAnswer(Base):
     answer_text: Mapped[str] = mapped_column(Text, nullable=False)
     ai_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     ai_feedback: Mapped[str | None] = mapped_column(Text, nullable=True)
+    criterion_scores: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     ai_scored_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     human_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     human_feedback: Mapped[str | None] = mapped_column(Text, nullable=True)
