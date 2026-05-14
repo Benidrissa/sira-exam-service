@@ -33,6 +33,8 @@ from app.schemas.exam import (
     ExamScenarioResponse,
     ExamScenarioUpdate,
     ExamSourceResponse,
+    ExamTestCreate,
+    ExamTestResponse,
     GenerateBriefRequest,
     GenerationStatusResponse,
     HumanScoreUpdate,
@@ -507,6 +509,32 @@ async def validate_all_questions(
         bank_id=bank_id,
         validated_count=validated_count,
         bank_status=bank.status,
+    )
+
+
+# ---------------------------------------------------------------------------
+# ExamTest — create (FR-1.7 precondition: bank must be published)
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/banks/{bank_id}/tests",
+    response_model=ExamTestResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_exam_test(
+    bank_id: uuid.UUID,
+    body: ExamTestCreate,
+    user: TeacherUser,
+    db: DB,
+) -> object:
+    """Create a test configuration from a published exam bank."""
+    return await exam_bank_service.create_test(
+        db,
+        bank_id=bank_id,
+        created_by=user.user_id,
+        org_id=user.org_id,
+        data=body,
     )
 
 
