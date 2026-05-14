@@ -17,70 +17,29 @@ branch_labels = None
 depends_on = None
 
 
-def upgrade() -> None:
-    # --- Enums ---
-    extractionstatus = postgresql.ENUM(
-        "pending",
-        "extracting",
-        "done",
-        "failed",
-        name="extractionstatus",
-        create_type=True,
-    )
-    bankstatus = postgresql.ENUM(
-        "draft",
-        "generating",
-        "review",
-        "published",
-        "archived",
-        name="bankstatus",
-        create_type=True,
-    )
-    questiontype = postgresql.ENUM(
-        "mcq",
-        "dissertation",
-        name="questiontype",
-        create_type=True,
-    )
-    difficulty = postgresql.ENUM(
-        "easy",
-        "medium",
-        "hard",
-        name="difficulty",
-        create_type=True,
-    )
-    testmode = postgresql.ENUM(
-        "exam",
-        "training",
-        "review",
-        name="testmode",
-        create_type=True,
-    )
-    teststatus = postgresql.ENUM(
-        "draft",
-        "published",
-        "archived",
-        name="teststatus",
-        create_type=True,
-    )
-    dissertationstatus = postgresql.ENUM(
-        "pending",
-        "ai_scored",
-        "human_reviewed",
-        name="dissertationstatus",
-        create_type=True,
+def _create_enum_if_not_exists(name: str, values: list[str]) -> None:
+    """Create a PostgreSQL ENUM type using a DO block (idempotent, asyncpg-safe)."""
+    values_sql = ", ".join(f"'{v}'" for v in values)
+    op.execute(
+        f"""DO $$ BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = '{name}') THEN
+                CREATE TYPE {name} AS ENUM ({values_sql});
+            END IF;
+        END $$;"""
     )
 
-    for enum in (
-        extractionstatus,
-        bankstatus,
-        questiontype,
-        difficulty,
-        testmode,
-        teststatus,
-        dissertationstatus,
-    ):
-        enum.create(op.get_bind(), checkfirst=True)
+
+def upgrade() -> None:
+    # --- Enums (created via DO blocks for asyncpg idempotency) ---
+    _create_enum_if_not_exists("extractionstatus", ["pending", "extracting", "done", "failed"])
+    _create_enum_if_not_exists(
+        "bankstatus", ["draft", "generating", "review", "published", "archived"]
+    )
+    _create_enum_if_not_exists("questiontype", ["mcq", "dissertation"])
+    _create_enum_if_not_exists("difficulty", ["easy", "medium", "hard"])
+    _create_enum_if_not_exists("testmode", ["exam", "training", "review"])
+    _create_enum_if_not_exists("teststatus", ["draft", "published", "archived"])
+    _create_enum_if_not_exists("dissertationstatus", ["pending", "ai_scored", "human_reviewed"])
 
     # --- exam_banks ---
     op.create_table(
