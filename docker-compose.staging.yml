@@ -1,13 +1,14 @@
-version: "3.9"
-
 # Staging / production compose.
-# Shared infra (postgres, redis, minio) expected from the Sira platform stack.
+# Connects to shared etutor infrastructure on the etutor_etutor-data network.
 # Traefik reverse proxy must be running with external network "proxy".
 
 networks:
   sira-exam:
     name: sira-exam
   proxy:
+    external: true
+  etutor-data:
+    name: etutor_etutor-data
     external: true
 
 services:
@@ -18,6 +19,7 @@ services:
     networks:
       - sira-exam
       - proxy
+      - etutor-data
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=proxy"
@@ -42,6 +44,7 @@ services:
     command: celery -A app.tasks.celery_app worker --loglevel=info --concurrency=4 -B
     networks:
       - sira-exam
+      - etutor-data
     healthcheck:
       test: ["CMD", "celery", "-A", "app.tasks.celery_app", "inspect", "ping"]
       interval: 60s
