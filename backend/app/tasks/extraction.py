@@ -15,7 +15,7 @@ logger = structlog.get_logger(__name__)
 
 @celery_app.task(name="extract_exam_source", bind=True, max_retries=3)
 def extract_exam_source_task(self, source_id: str) -> dict:  # type: ignore[no-untyped-def]
-    return asyncio.get_event_loop().run_until_complete(_extract(source_id))
+    return asyncio.run(_extract(source_id))
 
 
 async def _extract(source_id: str) -> dict:
