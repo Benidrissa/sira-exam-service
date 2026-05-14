@@ -77,7 +77,11 @@ async def start_attempt(
     db.add(attempt)
     await db.commit()
     await db.refresh(attempt)
-    return attempt
+
+    # Return attempt + metadata needed by the frontend player
+    drawn = {str(q.id): q for q in all_questions}
+    ordered_questions = [drawn[str(qid)] for qid in question_ids if str(qid) in drawn]
+    return attempt, test, ordered_questions
 
 
 async def submit_attempt(

@@ -37,6 +37,7 @@ from app.schemas.exam import (
     GenerationStatusResponse,
     HumanScoreUpdate,
     RegenerateRequest,
+    StartAttemptResponse,
     SubmitAttemptRequest,
 )
 from app.tasks.celery_app import celery_app
@@ -516,23 +517,34 @@ async def validate_all_questions(
 
 @router.post(
     "/tests/{test_id}/start",
-    response_model=ExamAttemptResponse,
+    response_model=StartAttemptResponse,
     status_code=status.HTTP_201_CREATED,
 )
 async def start_exam_attempt(
     test_id: uuid.UUID,
     db: DB,
     user: CurrentUser,
-) -> ExamAttemptResponse:
-    """Draw questions and create an ExamAttempt (FR-1.7.1)."""
+) -> StartAttemptResponse:
+    """Draw questions and create an ExamAttempt (FR-1.7.1).
+
+    Returns attempt + pre-loaded questions so the frontend needs a single call.
+    """
     org_id = uuid.UUID(user.org_id) if user.org_id else uuid.UUID(int=0)
-    attempt = await exam_attempt_service.start_attempt(
+    attempt, test, questions = await exam_attempt_service.start_attempt(
         db,
         test_id=test_id,
         user_id=uuid.UUID(user.user_id),
         org_id=org_id,
     )
-    return ExamAttemptResponse.model_validate(attempt)
+    return StartAttemptResponse(
+        attempt_id=attempt.id,
+        test_id=attempt.test_id,
+        user_id=attempt.user_id,
+        bank_id=test.bank_id,
+        question_ids=attempt.question_ids,
+        time_limit_minutes=test.time_limit_minutes,
+        questions=[ExamQuestionResponse.model_validate(q) for q in questions],
+    )
 
 
 @router.post("/attempts/{attempt_id}/submit", response_model=ExamAttemptResponse)
