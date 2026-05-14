@@ -49,6 +49,11 @@ known-first-party = ["app"]
 "migrations/**" = ["E501"]
 "app/api/**" = ["E501"]
 "app/tasks/**" = ["E501"]
+# Domain models: E501 for long FK/relationship lines; UP042 deferred (str+Enum is intentional
+# for SQLAlchemy Enum column compatibility — StrEnum behaves identically in Py3.12 but changing
+# existing scaffold enums is a separate cleanup task).
+"app/domain/models/**" = ["E501", "UP042"]
+"app/infrastructure/**" = ["E501"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

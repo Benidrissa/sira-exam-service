@@ -1,4 +1,5 @@
 """Sira Exam Service — FastAPI application entry point."""
+
 from __future__ import annotations
 
 import structlog
@@ -34,6 +35,7 @@ app.include_router(exam_router, prefix="/api/v1")
 async def startup() -> None:
     await create_schema()
     from app.infrastructure.storage import get_exam_storage
+
     await get_exam_storage().ensure_bucket()
     logger.info("sira_exam_service_started", frontend_url=settings.frontend_url)
 

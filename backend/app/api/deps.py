@@ -1,4 +1,5 @@
 """FastAPI dependency functions for auth and DB session."""
+
 from __future__ import annotations
 
 from typing import Annotated
@@ -30,13 +31,17 @@ def get_current_user(request: Request) -> AuthenticatedUser:
     return verify_sira_token(token)
 
 
-def require_teacher(user: Annotated[AuthenticatedUser, Depends(get_current_user)]) -> AuthenticatedUser:
+def require_teacher(
+    user: Annotated[AuthenticatedUser, Depends(get_current_user)],
+) -> AuthenticatedUser:
     if not user.is_teacher:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Teacher role required")
     return user
 
 
-def require_admin(user: Annotated[AuthenticatedUser, Depends(get_current_user)]) -> AuthenticatedUser:
+def require_admin(
+    user: Annotated[AuthenticatedUser, Depends(get_current_user)],
+) -> AuthenticatedUser:
     if not user.is_admin:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin role required")
     return user
