@@ -22,6 +22,8 @@ celery_app.conf.update(
     task_track_started=True,
     task_acks_late=True,
     worker_prefetch_multiplier=1,
+    # Dedicated queue so sira tasks don't mix with etutor's default "celery" queue
+    task_default_queue="sira_exam",
     beat_schedule={
         "check-heartbeat-every-30s": {
             "task": "tasks.check_heartbeat",
