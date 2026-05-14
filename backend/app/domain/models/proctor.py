@@ -73,9 +73,7 @@ class ExamSession(Base):
     last_heartbeat_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    consecutive_missed_heartbeats: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0
-    )
+    consecutive_missed_heartbeats: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     consent_given: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     consent_given_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -176,9 +174,7 @@ class ProctorAlert(Base):
     message: Mapped[str] = mapped_column(Text, nullable=False)
     acknowledged: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     acknowledged_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
-    acknowledged_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     session: Mapped[ExamSession] = relationship("ExamSession", back_populates="alerts")

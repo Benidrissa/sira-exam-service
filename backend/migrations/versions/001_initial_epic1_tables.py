@@ -57,8 +57,13 @@ def upgrade() -> None:
         sa.Column(
             "status",
             postgresql.ENUM(
-                "draft", "generating", "review", "published", "archived",
-                name="bankstatus", create_type=False,
+                "draft",
+                "generating",
+                "review",
+                "published",
+                "archived",
+                name="bankstatus",
+                create_type=False,
             ),
             nullable=False,
             server_default="draft",
@@ -88,8 +93,12 @@ def upgrade() -> None:
         sa.Column(
             "extraction_status",
             postgresql.ENUM(
-                "pending", "extracting", "done", "failed",
-                name="extractionstatus", create_type=False,
+                "pending",
+                "extracting",
+                "done",
+                "failed",
+                name="extractionstatus",
+                create_type=False,
             ),
             nullable=False,
             server_default="pending",
@@ -249,8 +258,11 @@ def upgrade() -> None:
         sa.Column(
             "status",
             postgresql.ENUM(
-                "pending", "ai_scored", "human_reviewed",
-                name="dissertationstatus", create_type=False,
+                "pending",
+                "ai_scored",
+                "human_reviewed",
+                name="dissertationstatus",
+                create_type=False,
             ),
             nullable=False,
             server_default="pending",

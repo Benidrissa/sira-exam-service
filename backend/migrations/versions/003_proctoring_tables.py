@@ -31,15 +31,11 @@ def _create_enum_if_not_exists(name: str, values: list[str]) -> None:
 
 def upgrade() -> None:
     # --- New ENUM types ---
-    _create_enum_if_not_exists(
-        "sessionstatus", ["active", "terminated", "expired", "completed"]
-    )
+    _create_enum_if_not_exists("sessionstatus", ["active", "terminated", "expired", "completed"])
     _create_enum_if_not_exists(
         "snapshotanalysis", ["pending", "analyzing", "clean", "flagged", "error"]
     )
-    _create_enum_if_not_exists(
-        "eventseverity", ["info", "low", "medium", "high", "critical"]
-    )
+    _create_enum_if_not_exists("eventseverity", ["info", "low", "medium", "high", "critical"])
 
     # --- exam_sessions ---
     op.create_table(
@@ -58,8 +54,12 @@ def upgrade() -> None:
         sa.Column(
             "status",
             postgresql.ENUM(
-                "active", "terminated", "expired", "completed",
-                name="sessionstatus", create_type=False,
+                "active",
+                "terminated",
+                "expired",
+                "completed",
+                name="sessionstatus",
+                create_type=False,
             ),
             nullable=False,
             server_default="active",
@@ -69,9 +69,7 @@ def upgrade() -> None:
         sa.Column("started_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
         sa.Column("ended_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("last_heartbeat_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column(
-            "consecutive_missed_heartbeats", sa.Integer, nullable=False, server_default="0"
-        ),
+        sa.Column("consecutive_missed_heartbeats", sa.Integer, nullable=False, server_default="0"),
         sa.Column("consent_given", sa.Boolean, nullable=False, server_default="false"),
         sa.Column("consent_given_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("reference_frame_key", sa.Text, nullable=True),
@@ -96,8 +94,13 @@ def upgrade() -> None:
         sa.Column(
             "analysis_status",
             postgresql.ENUM(
-                "pending", "analyzing", "clean", "flagged", "error",
-                name="snapshotanalysis", create_type=False,
+                "pending",
+                "analyzing",
+                "clean",
+                "flagged",
+                "error",
+                name="snapshotanalysis",
+                create_type=False,
             ),
             nullable=False,
             server_default="pending",
@@ -123,8 +126,13 @@ def upgrade() -> None:
         sa.Column(
             "severity",
             postgresql.ENUM(
-                "info", "low", "medium", "high", "critical",
-                name="eventseverity", create_type=False,
+                "info",
+                "low",
+                "medium",
+                "high",
+                "critical",
+                name="eventseverity",
+                create_type=False,
             ),
             nullable=False,
             server_default="info",
@@ -153,8 +161,13 @@ def upgrade() -> None:
         sa.Column(
             "severity",
             postgresql.ENUM(
-                "info", "low", "medium", "high", "critical",
-                name="eventseverity", create_type=False,
+                "info",
+                "low",
+                "medium",
+                "high",
+                "critical",
+                name="eventseverity",
+                create_type=False,
             ),
             nullable=False,
             server_default="info",

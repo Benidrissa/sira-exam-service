@@ -304,5 +304,7 @@ async def terminate_session(
 ) -> ExamSessionResponse:
     """Terminate an active session (teacher only, FR-2.2)."""
     await _get_session_or_404(db, session_id, _org(user))
-    updated = await proctor_session_service.terminate_session(db, session_id=session_id, reason=body.reason)
+    updated = await proctor_session_service.terminate_session(
+        db, session_id=session_id, reason=body.reason
+    )
     return ExamSessionResponse.model_validate(updated)
