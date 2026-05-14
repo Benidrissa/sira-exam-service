@@ -8,8 +8,8 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.domain.models.exam import BankStatus, ExamBank
-from app.schemas.exam import ExamBankCreate, ExamBankUpdate
+from app.domain.models.exam import BankStatus, ExamBank, ExamTest, TestStatus
+from app.schemas.exam import ExamBankCreate, ExamBankUpdate, ExamTestCreate
 
 
 async def create_bank(
@@ -89,3 +89,30 @@ async def delete_bank(
     bank = await get_bank(db, bank_id=bank_id, org_id=org_id)
     bank.status = BankStatus.archived
     await db.commit()
+
+
+async def create_test(
+    db: AsyncSession,
+    *,
+    bank_id: uuid.UUID,
+    created_by: uuid.UUID,
+    org_id: uuid.UUID,
+    data: ExamTestCreate,
+) -> ExamTest:
+    bank = await get_bank(db, bank_id=bank_id, org_id=org_id)
+    if bank.status != BankStatus.published:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Bank must be published before creating a test",
+        )
+    test = ExamTest(
+        id=uuid.uuid4(),
+        bank_id=bank_id,
+        created_by=created_by,
+        status=TestStatus.draft,
+        **data.model_dump(),
+    )
+    db.add(test)
+    await db.commit()
+    await db.refresh(test)
+    return test
