@@ -1,5 +1,4 @@
 from celery import Celery
-from celery.schedules import crontab  # noqa: F401
 
 from app.core.config import settings
 

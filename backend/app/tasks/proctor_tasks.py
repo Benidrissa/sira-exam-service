@@ -124,7 +124,9 @@ async def _analyze_snapshot_async(snapshot_id: str) -> dict:  # type: ignore[typ
             ],
         )
 
-        result: dict = response.content[0].input  # type: ignore[union-attr]
+        tool_block = response.content[0]
+        assert tool_block.type == "tool_use", f"Expected tool_use, got {tool_block.type}"  # type: ignore[union-attr]
+        result: dict = tool_block.input  # type: ignore[union-attr]
 
         snap.analysis_status = (
             SnapshotAnalysis.flagged if result["violation_detected"] else SnapshotAnalysis.clean
@@ -161,24 +163,26 @@ async def _analyze_snapshot_async(snapshot_id: str) -> dict:  # type: ignore[typ
             await db.refresh(alert)
 
             # Publish to Redis for WebSocket fanout (sync redis for Celery worker)
-            import redis as sync_redis
+            import redis as sync_redis_lib
 
-            r = sync_redis.from_url(settings.redis_url)
-            r.publish(
-                f"proctor:session:{snap.session_id}",
-                json.dumps(
-                    {
-                        "type": "violation",
-                        "session_id": str(snap.session_id),
-                        "alert": {
-                            "id": str(alert.id),
-                            "severity": severity.value,
-                            "message": alert.message,
-                        },
-                    }
-                ),
-            )
-            r.close()
+            r = sync_redis_lib.from_url(settings.redis_url)
+            try:
+                r.publish(
+                    f"proctor:session:{snap.session_id}",
+                    json.dumps(
+                        {
+                            "type": "violation",
+                            "session_id": str(snap.session_id),
+                            "alert": {
+                                "id": str(alert.id),
+                                "severity": severity.value,
+                                "message": alert.message,
+                            },
+                        }
+                    ),
+                )
+            finally:
+                r.close()
 
             logger.info(
                 "snapshot_violation_flagged",
@@ -202,6 +206,7 @@ def check_heartbeat() -> dict:  # type: ignore[type-arg]
 
 
 async def _check_heartbeat_async() -> dict:  # type: ignore[type-arg]
+    import redis as sync_redis_lib
     from sqlalchemy import select
 
     from app.core.database import AsyncSessionLocal
@@ -225,56 +230,62 @@ async def _check_heartbeat_async() -> dict:  # type: ignore[type-arg]
         sessions = result.scalars().all()
 
         flagged = 0
-        for session in sessions:
-            session.consecutive_missed_heartbeats = (
-                session.consecutive_missed_heartbeats or 0
-            ) + 1
+        r = sync_redis_lib.from_url(settings.redis_url)
+        try:
+            for session in sessions:
+                # Idempotency guard: skip if already processed within this 60 s window
+                lock_key = f"exam:heartbeat_check:{session.id}"
+                if r.exists(lock_key):
+                    continue
+                r.setex(lock_key, 60, "1")
 
-            missed = session.consecutive_missed_heartbeats
-            severity = EventSeverity.high if missed >= 3 else EventSeverity.medium
+                session.consecutive_missed_heartbeats = (
+                    session.consecutive_missed_heartbeats or 0
+                ) + 1
 
-            event = ProctorEvent(
-                id=_uuid_module.uuid4(),
-                session_id=session.id,
-                event_type="heartbeat_missed",
-                severity=severity,
-                payload={"count": missed},
-            )
-            db.add(event)
+                missed = session.consecutive_missed_heartbeats
+                severity = EventSeverity.high if missed >= 3 else EventSeverity.medium
 
-            if missed >= 5:
-                session.status = SessionStatus.expired
-                session.ended_at = datetime.now(UTC)
-                session.termination_reason = "heartbeat_timeout"
-
-                alert = ProctorAlert(
+                event = ProctorEvent(
                     id=_uuid_module.uuid4(),
                     session_id=session.id,
-                    severity=EventSeverity.critical,
-                    message=(
-                        f"Session auto-expired: {missed} consecutive missed heartbeats"
-                    ),
+                    event_type="heartbeat_missed",
+                    severity=severity,
+                    payload={"count": missed},
                 )
-                db.add(alert)
+                db.add(event)
 
-                # Notify proctor via Redis
-                import redis as sync_redis
+                if missed >= 5:
+                    session.status = SessionStatus.expired
+                    session.ended_at = datetime.now(UTC)
+                    session.termination_reason = "heartbeat_timeout"
 
-                r = sync_redis.from_url(settings.redis_url)
-                r.publish(
-                    f"proctor:session:{session.id}",
-                    json.dumps(
-                        {
-                            "type": "session_expired",
-                            "session_id": str(session.id),
-                            "reason": "heartbeat_timeout",
-                            "missed_count": missed,
-                        }
-                    ),
-                )
-                r.close()
+                    alert = ProctorAlert(
+                        id=_uuid_module.uuid4(),
+                        session_id=session.id,
+                        severity=EventSeverity.critical,
+                        message=(
+                            f"Session auto-expired: {missed} consecutive missed heartbeats"
+                        ),
+                    )
+                    db.add(alert)
 
-            flagged += 1
+                    # Notify proctor via Redis
+                    r.publish(
+                        f"proctor:session:{session.id}",
+                        json.dumps(
+                            {
+                                "type": "session_expired",
+                                "session_id": str(session.id),
+                                "reason": "heartbeat_timeout",
+                                "missed_count": missed,
+                            }
+                        ),
+                    )
+
+                flagged += 1
+        finally:
+            r.close()
 
         await db.commit()
         logger.info("heartbeat_check_done", checked=len(sessions), flagged=flagged)

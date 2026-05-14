@@ -44,6 +44,8 @@ async def list_sessions(
 
     Filters by org_id (required for non-admin) and optional status.
     """
+    from sqlalchemy import select as sa_select
+
     from app.domain.models.proctor import (  # type: ignore[attr-defined]
         ExamSession,
         ProctorAlert,
@@ -55,45 +57,51 @@ async def list_sessions(
     if not user.is_admin:
         effective_org = uuid.UUID(user.org_id) if user.org_id else None
 
-    stmt = select(ExamSession)
+    # Correlated subquery: unacked alert count per session
+    alert_count_sq = (
+        sa_select(func.count(ProctorAlert.id))
+        .where(ProctorAlert.session_id == ExamSession.id, ProctorAlert.acknowledged.is_(False))
+        .correlate(ExamSession)
+        .scalar_subquery()
+    )
+
+    # Correlated subquery: latest snapshot storage_key per session
+    latest_snap_sq = (
+        sa_select(ProctorSnapshot.storage_key)
+        .where(ProctorSnapshot.session_id == ExamSession.id)
+        .order_by(ProctorSnapshot.created_at.desc())
+        .limit(1)
+        .correlate(ExamSession)
+        .scalar_subquery()
+    )
+
+    stmt = select(
+        ExamSession,
+        alert_count_sq.label("unacked_count"),
+        latest_snap_sq.label("latest_snap_key"),
+    )
     if effective_org is not None:
         stmt = stmt.where(ExamSession.org_id == effective_org)
     if session_status is not None:
         stmt = stmt.where(ExamSession.status == session_status)
+    stmt = stmt.order_by(ExamSession.started_at.desc()).limit(100)
 
     result = await db.execute(stmt)
-    sessions = result.scalars().all()
+    rows = result.all()
 
     storage = get_exam_storage()
     out: list[SessionSummarySchema] = []
 
-    for sess in sessions:
-        # Unacked alert count
-        count_result = await db.execute(
-            select(func.count()).where(
-                ProctorAlert.session_id == sess.id,
-                ProctorAlert.acknowledged.is_(False),
-            )
-        )
-        unacked = count_result.scalar_one_or_none() or 0
-
-        # Latest snapshot presigned URL
-        snap_result = await db.execute(
-            select(ProctorSnapshot)
-            .where(ProctorSnapshot.session_id == sess.id)
-            .order_by(ProctorSnapshot.created_at.desc())
-            .limit(1)
-        )
-        latest_snap = snap_result.scalar_one_or_none()
+    for sess, unacked_count, snap_key in rows:
         snap_url: str | None = None
-        if latest_snap and latest_snap.storage_key:
+        if snap_key:
             try:
-                snap_url = await storage.presigned_get_url(latest_snap.storage_key)
+                snap_url = await storage.presigned_get_url(snap_key)
             except Exception:  # noqa: BLE001
                 snap_url = None
 
         schema = SessionSummarySchema.model_validate(sess)
-        schema.unacked_alert_count = unacked
+        schema.unacked_alert_count = unacked_count or 0
         schema.latest_snapshot_url = snap_url
         out.append(schema)
 
@@ -281,8 +289,9 @@ async def acknowledge_alert(
 
     # Check org access via parent session
     session = await db.get(ExamSession, alert.session_id)
-    if session:
-        _assert_org_access(user, session.org_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Alert or session not found")
+    _assert_org_access(user, session.org_id)
 
     if not alert.acknowledged:
         alert.acknowledged = True
