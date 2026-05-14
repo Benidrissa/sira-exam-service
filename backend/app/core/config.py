@@ -43,6 +43,7 @@ class Settings(BaseSettings):
 
     # Feature flags
     enable_proctor_vision: bool = True
+    debug: bool = False
 
     # Sentry (optional)
     sentry_dsn: str = ""
