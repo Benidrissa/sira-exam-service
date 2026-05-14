@@ -1,0 +1,17 @@
+{
+  "recommendations": [
+    "charliermarsh.ruff",
+    "ms-python.pylance",
+    "ms-python.python",
+    "esbenp.prettier-vscode",
+    "dbaeumer.vscode-eslint",
+    "eamodio.gitlens",
+    "ms-azuretools.vscode-docker",
+    "rangav.vscode-thunder-client",
+    "ms-playwright.playwright",
+    "bradlc.vscode-tailwindcss",
+    "prisma.prisma",
+    "yoavbls.pretty-ts-errors",
+    "usernamehw.errorlens"
+  ]
+}

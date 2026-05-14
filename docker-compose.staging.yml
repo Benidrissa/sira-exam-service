@@ -1,0 +1,65 @@
+version: "3.9"
+
+# Staging / production compose.
+# Shared infra (postgres, redis, minio) expected from the Sira platform stack.
+# Traefik reverse proxy must be running with external network "proxy".
+
+networks:
+  sira-exam:
+    name: sira-exam
+  proxy:
+    external: true
+
+services:
+  backend:
+    image: ghcr.io/benidrissa/sira-exam-service/exam-backend:latest
+    restart: unless-stopped
+    env_file: .env
+    networks:
+      - sira-exam
+      - proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=proxy"
+      - "traefik.http.routers.sira-exam-api.rule=Host(`sira-exam-api.elearning.portfolio2.kimbetien.com`)"
+      - "traefik.http.routers.sira-exam-api.entrypoints=websecure"
+      - "traefik.http.routers.sira-exam-api.tls.certresolver=le"
+      - "traefik.http.services.sira-exam-api.loadbalancer.server.port=8001"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    depends_on:
+      celery:
+        condition: service_started
+
+  celery:
+    image: ghcr.io/benidrissa/sira-exam-service/exam-backend:latest
+    restart: unless-stopped
+    env_file: .env
+    command: celery -A app.tasks.celery_app worker --loglevel=info --concurrency=4 -B
+    networks:
+      - sira-exam
+    healthcheck:
+      test: ["CMD", "celery", "-A", "app.tasks.celery_app", "inspect", "ping"]
+      interval: 60s
+      timeout: 20s
+      retries: 3
+      start_period: 30s
+
+  frontend:
+    image: ghcr.io/benidrissa/sira-exam-service/exam-frontend:latest
+    restart: unless-stopped
+    env_file: .env
+    networks:
+      - sira-exam
+      - proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=proxy"
+      - "traefik.http.routers.sira-exam-web.rule=Host(`sira-exam.elearning.portfolio2.kimbetien.com`)"
+      - "traefik.http.routers.sira-exam-web.entrypoints=websecure"
+      - "traefik.http.routers.sira-exam-web.tls.certresolver=le"
+      - "traefik.http.services.sira-exam-web.loadbalancer.server.port=3001"
