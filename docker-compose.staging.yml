@@ -25,7 +25,7 @@ services:
       - "traefik.docker.network=proxy"
       - "traefik.http.routers.sira-exam-api.rule=Host(`sira-exam-api.elearning.portfolio2.kimbetien.com`)"
       - "traefik.http.routers.sira-exam-api.entrypoints=websecure"
-      - "traefik.http.routers.sira-exam-api.tls.certresolver=le"
+      - "traefik.http.routers.sira-exam-api.tls.certresolver=letsencrypt"
       - "traefik.http.services.sira-exam-api.loadbalancer.server.port=8001"
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8001/health"]
@@ -64,5 +64,5 @@ services:
       - "traefik.docker.network=proxy"
       - "traefik.http.routers.sira-exam-web.rule=Host(`sira-exam.elearning.portfolio2.kimbetien.com`)"
       - "traefik.http.routers.sira-exam-web.entrypoints=websecure"
-      - "traefik.http.routers.sira-exam-web.tls.certresolver=le"
+      - "traefik.http.routers.sira-exam-web.tls.certresolver=letsencrypt"
       - "traefik.http.services.sira-exam-web.loadbalancer.server.port=3001"
