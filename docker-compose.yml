@@ -1,0 +1,45 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8001:8001"
+    env_file: .env
+    depends_on:
+      - celery
+    volumes:
+      - ./backend:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
+
+  celery:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file: .env
+    command: celery -A app.tasks.celery_app worker --loglevel=info --concurrency=4
+    volumes:
+      - ./backend:/app
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3001:3001"
+    env_file: .env
+    environment:
+      - NEXT_PUBLIC_EXAM_API_URL=http://localhost:8001/api/v1
+
+# Shared services (postgres, redis, minio) are expected to already be running
+# on the host via Sira's docker-compose.yml.
+# For standalone dev, add them here:
+# postgres:
+#   image: postgres:16
+#   ...
+# redis:
+#   image: redis:7-alpine
+#   ...
+# minio:
+#   image: minio/minio
+#   ...

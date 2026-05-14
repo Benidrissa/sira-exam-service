@@ -1,0 +1,23 @@
+{
+  "create": {
+    "title": "Créer un examen",
+    "steps": {
+      "info": "Informations",
+      "sources": "Sources",
+      "scenarios": "Scénarios",
+      "generate": "Générer"
+    }
+  },
+  "review": {
+    "title": "Révision de l'examen",
+    "validate": "Valider",
+    "validateAll": "Tout valider",
+    "publish": "Publier"
+  },
+  "common": {
+    "save": "Enregistrer",
+    "cancel": "Annuler",
+    "delete": "Supprimer",
+    "edit": "Modifier"
+  }
+}

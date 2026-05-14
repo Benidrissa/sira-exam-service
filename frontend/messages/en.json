@@ -1,0 +1,23 @@
+{
+  "create": {
+    "title": "Create Exam",
+    "steps": {
+      "info": "Information",
+      "sources": "Sources",
+      "scenarios": "Scenarios",
+      "generate": "Generate"
+    }
+  },
+  "review": {
+    "title": "Exam Review",
+    "validate": "Validate",
+    "validateAll": "Validate All",
+    "publish": "Publish"
+  },
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit"
+  }
+}
