@@ -65,4 +65,4 @@ services:
       - "traefik.http.routers.sira-exam-web.rule=Host(`sira-exam.elearning.portfolio2.kimbetien.com`)"
       - "traefik.http.routers.sira-exam-web.entrypoints=websecure"
       - "traefik.http.routers.sira-exam-web.tls.certresolver=letsencrypt"
-      - "traefik.http.services.sira-exam-web.loadbalancer.server.port=3001"
+      - "traefik.http.services.sira-exam-web.loadbalancer.server.port=3000"
