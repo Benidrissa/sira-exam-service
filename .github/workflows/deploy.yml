@@ -161,9 +161,10 @@ jobs:
             # Force-recreate backend to pick up env changes
             docker compose up -d --force-recreate backend
 
-            # Health check — allow self-signed cert during initial Let's Encrypt provisioning
-            sleep 30
-            curl -sfk https://sira-exam-api.elearning.portfolio2.kimbetien.com/health || \
+            # Health check — use direct container IP to bypass Traefik TLS (LE cert may not be ready)
+            sleep 20
+            BACKEND_IP=$(docker inspect sira-exam-service-backend-1 --format '{{.NetworkSettings.Networks.proxy.IPAddress}}')
+            curl -sf "http://${BACKEND_IP}:8001/health" || \
               (echo "Health check failed — rolling back to previous sha" && \
                docker compose down && exit 1)
 
