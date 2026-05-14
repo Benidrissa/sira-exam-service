@@ -43,7 +43,7 @@ services:
     image: ghcr.io/benidrissa/sira-exam-service/exam-backend:latest
     restart: unless-stopped
     env_file: .env
-    command: celery -A app.tasks.celery_app worker --loglevel=info --concurrency=4 -B
+    command: celery -A app.tasks.celery_app worker --loglevel=info --concurrency=4 -B -Q sira_exam
     networks:
       - sira-exam
       - etutor-data
