@@ -254,6 +254,27 @@ class BulkValidationResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Attempt start/submit (E1-7)
+# ---------------------------------------------------------------------------
+
+
+class SubmitAttemptRequest(BaseModel):
+    mcq_answers: dict[str, list[int]] = Field(default_factory=dict)
+    dissertation_answers: dict[str, str] = Field(default_factory=dict)
+    time_taken_sec: int | None = Field(None, ge=1)
+
+
+# ---------------------------------------------------------------------------
+# Human scoring (E1-9)
+# ---------------------------------------------------------------------------
+
+
+class HumanScoreUpdate(BaseModel):
+    human_score: float = Field(..., ge=0.0)
+    human_feedback: str = Field(..., min_length=1, max_length=5000)
+
+
+# ---------------------------------------------------------------------------
 # DissertationAnswer
 # ---------------------------------------------------------------------------
 
