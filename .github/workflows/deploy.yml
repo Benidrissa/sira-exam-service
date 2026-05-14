@@ -146,6 +146,15 @@ jobs:
             # Up
             docker compose up -d --remove-orphans
 
+            # Pre-create PostgreSQL ENUM types via psql (bypasses SQLAlchemy/asyncpg CREATE TYPE issues)
+            docker exec etutor-postgres psql -U postgres sira_db -c "DO \$b\$ BEGIN CREATE TYPE extractionstatus AS ENUM ('pending','extracting','done','failed'); EXCEPTION WHEN duplicate_object THEN NULL; END \$b\$;"
+            docker exec etutor-postgres psql -U postgres sira_db -c "DO \$b\$ BEGIN CREATE TYPE bankstatus AS ENUM ('draft','generating','review','published','archived'); EXCEPTION WHEN duplicate_object THEN NULL; END \$b\$;"
+            docker exec etutor-postgres psql -U postgres sira_db -c "DO \$b\$ BEGIN CREATE TYPE questiontype AS ENUM ('mcq','dissertation'); EXCEPTION WHEN duplicate_object THEN NULL; END \$b\$;"
+            docker exec etutor-postgres psql -U postgres sira_db -c "DO \$b\$ BEGIN CREATE TYPE difficulty AS ENUM ('easy','medium','hard'); EXCEPTION WHEN duplicate_object THEN NULL; END \$b\$;"
+            docker exec etutor-postgres psql -U postgres sira_db -c "DO \$b\$ BEGIN CREATE TYPE testmode AS ENUM ('exam','training','review'); EXCEPTION WHEN duplicate_object THEN NULL; END \$b\$;"
+            docker exec etutor-postgres psql -U postgres sira_db -c "DO \$b\$ BEGIN CREATE TYPE teststatus AS ENUM ('draft','published','archived'); EXCEPTION WHEN duplicate_object THEN NULL; END \$b\$;"
+            docker exec etutor-postgres psql -U postgres sira_db -c "DO \$b\$ BEGIN CREATE TYPE dissertationstatus AS ENUM ('pending','ai_scored','human_reviewed'); EXCEPTION WHEN duplicate_object THEN NULL; END \$b\$;"
+
             # Migrations
             docker compose run --rm backend alembic upgrade head
 
