@@ -4,6 +4,7 @@ Revision ID: 001
 Revises:
 Create Date: 2026-05-14
 """
+
 from __future__ import annotations
 
 import sqlalchemy as sa
@@ -19,35 +20,66 @@ depends_on = None
 def upgrade() -> None:
     # --- Enums ---
     extractionstatus = postgresql.ENUM(
-        "pending", "extracting", "done", "failed",
-        name="extractionstatus", create_type=True,
+        "pending",
+        "extracting",
+        "done",
+        "failed",
+        name="extractionstatus",
+        create_type=True,
     )
     bankstatus = postgresql.ENUM(
-        "draft", "generating", "review", "published", "archived",
-        name="bankstatus", create_type=True,
+        "draft",
+        "generating",
+        "review",
+        "published",
+        "archived",
+        name="bankstatus",
+        create_type=True,
     )
     questiontype = postgresql.ENUM(
-        "mcq", "dissertation",
-        name="questiontype", create_type=True,
+        "mcq",
+        "dissertation",
+        name="questiontype",
+        create_type=True,
     )
     difficulty = postgresql.ENUM(
-        "easy", "medium", "hard",
-        name="difficulty", create_type=True,
+        "easy",
+        "medium",
+        "hard",
+        name="difficulty",
+        create_type=True,
     )
     testmode = postgresql.ENUM(
-        "exam", "training", "review",
-        name="testmode", create_type=True,
+        "exam",
+        "training",
+        "review",
+        name="testmode",
+        create_type=True,
     )
     teststatus = postgresql.ENUM(
-        "draft", "published", "archived",
-        name="teststatus", create_type=True,
+        "draft",
+        "published",
+        "archived",
+        name="teststatus",
+        create_type=True,
     )
     dissertationstatus = postgresql.ENUM(
-        "pending", "ai_scored", "human_reviewed",
-        name="dissertationstatus", create_type=True,
+        "pending",
+        "ai_scored",
+        "human_reviewed",
+        name="dissertationstatus",
+        create_type=True,
     )
 
-    for enum in (extractionstatus, bankstatus, questiontype, difficulty, testmode, teststatus, dissertationstatus):
+    for enum in (
+        extractionstatus,
+        bankstatus,
+        questiontype,
+        difficulty,
+        testmode,
+        teststatus,
+        dissertationstatus,
+    ):
         enum.create(op.get_bind(), checkfirst=True)
 
     # --- exam_banks ---
@@ -61,7 +93,20 @@ def upgrade() -> None:
         sa.Column("subject", sa.Text, nullable=True),
         sa.Column("language", sa.Text, nullable=False, server_default="fr"),
         sa.Column("passing_score", sa.Float, nullable=False, server_default="80.0"),
-        sa.Column("status", sa.Enum("draft", "generating", "review", "published", "archived", name="bankstatus", create_type=False), nullable=False, server_default="draft"),
+        sa.Column(
+            "status",
+            sa.Enum(
+                "draft",
+                "generating",
+                "review",
+                "published",
+                "archived",
+                name="bankstatus",
+                create_type=False,
+            ),
+            nullable=False,
+            server_default="draft",
+        ),
         sa.Column("generation_task_id", sa.Text, nullable=True),
         sa.Column("generation_error", sa.Text, nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
@@ -74,12 +119,29 @@ def upgrade() -> None:
     op.create_table(
         "exam_sources",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("bank_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("exam_banks.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "bank_id",
+            postgresql.UUID(as_uuid=True),
+            sa.ForeignKey("exam_banks.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
         sa.Column("filename", sa.Text, nullable=False),
         sa.Column("storage_key", sa.Text, nullable=False),
         sa.Column("raw_text", sa.Text, nullable=True),
         sa.Column("char_count", sa.Integer, nullable=True),
-        sa.Column("extraction_status", sa.Enum("pending", "extracting", "done", "failed", name="extractionstatus", create_type=False), nullable=False, server_default="pending"),
+        sa.Column(
+            "extraction_status",
+            sa.Enum(
+                "pending",
+                "extracting",
+                "done",
+                "failed",
+                name="extractionstatus",
+                create_type=False,
+            ),
+            nullable=False,
+            server_default="pending",
+        ),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
     )
     op.create_index("ix_exam_sources_bank_id", "exam_sources", ["bank_id"])
@@ -88,7 +150,12 @@ def upgrade() -> None:
     op.create_table(
         "exam_scenarios",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("bank_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("exam_banks.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "bank_id",
+            postgresql.UUID(as_uuid=True),
+            sa.ForeignKey("exam_banks.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
         sa.Column("title", sa.Text, nullable=False),
         sa.Column("objective", sa.Text, nullable=True),
         sa.Column("context_text", sa.Text, nullable=True),
@@ -103,9 +170,24 @@ def upgrade() -> None:
     op.create_table(
         "exam_questions",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("bank_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("exam_banks.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("scenario_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("exam_scenarios.id", ondelete="SET NULL"), nullable=True),
-        sa.Column("question_type", sa.Enum("mcq", "dissertation", name="questiontype", create_type=False), nullable=False, server_default="mcq"),
+        sa.Column(
+            "bank_id",
+            postgresql.UUID(as_uuid=True),
+            sa.ForeignKey("exam_banks.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        sa.Column(
+            "scenario_id",
+            postgresql.UUID(as_uuid=True),
+            sa.ForeignKey("exam_scenarios.id", ondelete="SET NULL"),
+            nullable=True,
+        ),
+        sa.Column(
+            "question_type",
+            sa.Enum("mcq", "dissertation", name="questiontype", create_type=False),
+            nullable=False,
+            server_default="mcq",
+        ),
         sa.Column("title", sa.Text, nullable=True),
         sa.Column("description", sa.Text, nullable=False),
         sa.Column("image_storage_key", sa.Text, nullable=True),
@@ -115,7 +197,12 @@ def upgrade() -> None:
         sa.Column("explanation", sa.Text, nullable=True),
         sa.Column("model_answer", sa.Text, nullable=True),
         sa.Column("rubric", postgresql.JSONB, nullable=True),
-        sa.Column("difficulty", sa.Enum("easy", "medium", "hard", name="difficulty", create_type=False), nullable=False, server_default="medium"),
+        sa.Column(
+            "difficulty",
+            sa.Enum("easy", "medium", "hard", name="difficulty", create_type=False),
+            nullable=False,
+            server_default="medium",
+        ),
         sa.Column("category", sa.Text, nullable=True),
         sa.Column("order_index", sa.Integer, nullable=False, server_default="0"),
         sa.Column("ai_generated", sa.Boolean, nullable=False, server_default="false"),
@@ -130,17 +217,32 @@ def upgrade() -> None:
     op.create_table(
         "exam_tests",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("bank_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("exam_banks.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "bank_id",
+            postgresql.UUID(as_uuid=True),
+            sa.ForeignKey("exam_banks.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
         sa.Column("created_by", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("title", sa.Text, nullable=False),
-        sa.Column("mode", sa.Enum("exam", "training", "review", name="testmode", create_type=False), nullable=False, server_default="exam"),
+        sa.Column(
+            "mode",
+            sa.Enum("exam", "training", "review", name="testmode", create_type=False),
+            nullable=False,
+            server_default="exam",
+        ),
         sa.Column("question_count", sa.Integer, nullable=True),
         sa.Column("shuffle_questions", sa.Boolean, nullable=False, server_default="true"),
         sa.Column("time_limit_minutes", sa.Integer, nullable=True),
         sa.Column("show_feedback", sa.Boolean, nullable=False, server_default="false"),
         sa.Column("mcq_weight", sa.Float, nullable=False, server_default="1.0"),
         sa.Column("dissertation_weight", sa.Float, nullable=False, server_default="1.0"),
-        sa.Column("status", sa.Enum("draft", "published", "archived", name="teststatus", create_type=False), nullable=False, server_default="draft"),
+        sa.Column(
+            "status",
+            sa.Enum("draft", "published", "archived", name="teststatus", create_type=False),
+            nullable=False,
+            server_default="draft",
+        ),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
         sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
     )
@@ -150,7 +252,12 @@ def upgrade() -> None:
     op.create_table(
         "exam_attempts",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("test_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("exam_tests.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "test_id",
+            postgresql.UUID(as_uuid=True),
+            sa.ForeignKey("exam_tests.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
         sa.Column("user_id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("question_ids", postgresql.JSONB, nullable=False),
         sa.Column("mcq_answers", postgresql.JSONB, nullable=True),
@@ -167,8 +274,18 @@ def upgrade() -> None:
     op.create_table(
         "dissertation_answers",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("attempt_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("exam_attempts.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("question_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("exam_questions.id"), nullable=False),
+        sa.Column(
+            "attempt_id",
+            postgresql.UUID(as_uuid=True),
+            sa.ForeignKey("exam_attempts.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        sa.Column(
+            "question_id",
+            postgresql.UUID(as_uuid=True),
+            sa.ForeignKey("exam_questions.id"),
+            nullable=False,
+        ),
         sa.Column("answer_text", sa.Text, nullable=False),
         sa.Column("ai_score", sa.Float, nullable=True),
         sa.Column("ai_feedback", sa.Text, nullable=True),
@@ -177,7 +294,18 @@ def upgrade() -> None:
         sa.Column("human_feedback", sa.Text, nullable=True),
         sa.Column("human_scored_by", postgresql.UUID(as_uuid=True), nullable=True),
         sa.Column("human_scored_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("status", sa.Enum("pending", "ai_scored", "human_reviewed", name="dissertationstatus", create_type=False), nullable=False, server_default="pending"),
+        sa.Column(
+            "status",
+            sa.Enum(
+                "pending",
+                "ai_scored",
+                "human_reviewed",
+                name="dissertationstatus",
+                create_type=False,
+            ),
+            nullable=False,
+            server_default="pending",
+        ),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
     )
     op.create_index("ix_dissertation_answers_attempt_id", "dissertation_answers", ["attempt_id"])
@@ -193,5 +321,13 @@ def downgrade() -> None:
     op.drop_table("exam_sources")
     op.drop_table("exam_banks")
 
-    for name in ("dissertationstatus", "teststatus", "testmode", "difficulty", "questiontype", "bankstatus", "extractionstatus"):
+    for name in (
+        "dissertationstatus",
+        "teststatus",
+        "testmode",
+        "difficulty",
+        "questiontype",
+        "bankstatus",
+        "extractionstatus",
+    ):
         op.execute(f"DROP TYPE IF EXISTS {name}")
