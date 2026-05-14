@@ -176,6 +176,10 @@ def _uid(user: TeacherUser) -> uuid.UUID:
     return uuid.UUID(user.user_id)
 
 
+def _is_admin(user: TeacherUser) -> bool:
+    return bool(user.is_admin)
+
+
 @router.post(
     "/banks/{bank_id}/scenarios",
     response_model=ExamScenarioResponse,
@@ -225,6 +229,7 @@ async def update_scenario(
         bank_id=bank_id,
         org_id=_org(user),
         created_by=_uid(user),
+        is_admin=_is_admin(user),
         data=data,
     )
     return ExamScenarioResponse.model_validate(scenario)
@@ -240,6 +245,7 @@ async def delete_scenario(
         bank_id=bank_id,
         org_id=_org(user),
         created_by=_uid(user),
+        is_admin=_is_admin(user),
     )
 
 
@@ -318,6 +324,7 @@ async def update_question(
         bank_id=bank_id,
         org_id=_org(user),
         created_by=_uid(user),
+        is_admin=_is_admin(user),
         data=data,
     )
     return ExamQuestionResponse.model_validate(question)
@@ -333,6 +340,7 @@ async def delete_question(
         bank_id=bank_id,
         org_id=_org(user),
         created_by=_uid(user),
+        is_admin=_is_admin(user),
     )
 
 
