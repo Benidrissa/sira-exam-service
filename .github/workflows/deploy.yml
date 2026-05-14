@@ -86,6 +86,8 @@ jobs:
           SHA: ${{ needs.build-and-push.outputs.sha }}
           REGISTRY: ghcr.io
           REPO: ${{ needs.build-and-push.outputs.owner }}/sira-exam-service
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
           SIRA_JWT_SECRET: ${{ secrets.SIRA_JWT_SECRET }}
           DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
           REDIS_URL: ${{ secrets.STAGING_REDIS_URL }}
@@ -99,10 +101,11 @@ jobs:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
-          envs: SHA,REGISTRY,REPO,SIRA_JWT_SECRET,DATABASE_URL,REDIS_URL,MINIO_ENDPOINT,MINIO_ACCESS_KEY,MINIO_SECRET_KEY,EXAM_ANTHROPIC_API_KEY,EXAM_WATERMARK_SECRET,SENTRY_DSN
+          envs: SHA,REGISTRY,REPO,GHCR_TOKEN,GHCR_USER,SIRA_JWT_SECRET,DATABASE_URL,REDIS_URL,MINIO_ENDPOINT,MINIO_ACCESS_KEY,MINIO_SECRET_KEY,EXAM_ANTHROPIC_API_KEY,EXAM_WATERMARK_SECRET,SENTRY_DSN
           command_timeout: 30m
           script: |
             set -e
+            mkdir -p /home/deploy/sira-exam-service
             cd /home/deploy/sira-exam-service
 
             # Write .env
@@ -122,11 +125,13 @@ jobs:
             NEXT_PUBLIC_EXAM_API_URL=https://sira-exam-api.elearning.portfolio2.kimbetien.com/api/v1
             ENVEOF
 
-            # Pre-deploy DB backup
+            # Pre-deploy DB backup (uses shared etutor postgres container)
             mkdir -p backups
-            docker exec sira-postgres pg_dump -U postgres sira_db | gzip > backups/pre-deploy-${SHA}-$(date +%Y%m%d%H%M%S).sql.gz 2>/dev/null || true
-            # Keep last 7 days
+            docker exec etutor-postgres pg_dump -U postgres sira_db 2>/dev/null | gzip > backups/pre-deploy-${SHA}-$(date +%Y%m%d%H%M%S).sql.gz 2>/dev/null || true
             find backups -name "pre-deploy-*.sql.gz" -mtime +7 -delete 2>/dev/null || true
+
+            # Login to ghcr.io on staging server
+            echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${GHCR_USER}" --password-stdin
 
             # Pull exact SHA images
             docker pull ${REGISTRY}/${REPO}/exam-backend:${SHA}
