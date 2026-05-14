@@ -18,13 +18,15 @@ depends_on = None
 
 
 def _create_enum_if_not_exists(name: str, values: list[str]) -> None:
-    """Create a PostgreSQL ENUM type using a DO block (idempotent, asyncpg-safe)."""
+    """Create a PostgreSQL ENUM type — idempotent via EXCEPTION handling."""
     values_sql = ", ".join(f"'{v}'" for v in values)
+    # EXCEPTION WHEN duplicate_object is the only race-safe way to create types
+    # with asyncpg; IF NOT EXISTS has a TOCTOU window.
     op.execute(
         f"""DO $$ BEGIN
-            IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = '{name}') THEN
-                CREATE TYPE {name} AS ENUM ({values_sql});
-            END IF;
+            CREATE TYPE {name} AS ENUM ({values_sql});
+        EXCEPTION WHEN duplicate_object THEN
+            NULL;
         END $$;"""
     )
 
