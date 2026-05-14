@@ -97,9 +97,7 @@ def generate_exam_task(
     test_objective: str,
     scenarios_brief: list[dict],
 ) -> dict:
-    return asyncio.get_event_loop().run_until_complete(
-        _run_generation(bank_id, test_objective, scenarios_brief)
-    )
+    return asyncio.run(_run_generation(bank_id, test_objective, scenarios_brief))
 
 
 @celery_app.task(name="regenerate_scenario_task", bind=True, max_retries=2)
@@ -109,9 +107,7 @@ def regenerate_scenario_task(
     scenario_id: str,
     test_objective: str,
 ) -> dict:
-    return asyncio.get_event_loop().run_until_complete(
-        _run_regeneration(bank_id, scenario_id, test_objective)
-    )
+    return asyncio.run(_run_regeneration(bank_id, scenario_id, test_objective))
 
 
 async def _run_generation(
