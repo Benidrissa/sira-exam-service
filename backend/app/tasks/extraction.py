@@ -19,10 +19,10 @@ def extract_exam_source_task(self, source_id: str) -> dict:  # type: ignore[no-u
 
 
 async def _extract(source_id: str) -> dict:
-    from app.core.database import AsyncSessionLocal
+    from app.core.database import celery_db
     from app.domain.models.exam import ExamSource, ExtractionStatus
 
-    async with AsyncSessionLocal() as db:
+    async with celery_db() as db:
         from sqlalchemy import select
 
         result = await db.execute(select(ExamSource).where(ExamSource.id == uuid.UUID(source_id)))

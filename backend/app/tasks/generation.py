@@ -119,7 +119,7 @@ async def _run_generation(
     from sqlalchemy import select
 
     from app.core.config import settings
-    from app.core.database import AsyncSessionLocal
+    from app.core.database import celery_db
     from app.domain.models.exam import (
         BankStatus,
         Difficulty,
@@ -130,7 +130,7 @@ async def _run_generation(
         QuestionType,
     )
 
-    async with AsyncSessionLocal() as db:
+    async with celery_db() as db:
         bank = await db.get(ExamBank, uuid.UUID(bank_id))
         if not bank:
             logger.error("generate_exam_bank_not_found", bank_id=bank_id)
@@ -223,7 +223,7 @@ async def _run_regeneration(
     from sqlalchemy import delete, select
 
     from app.core.config import settings
-    from app.core.database import AsyncSessionLocal
+    from app.core.database import celery_db
     from app.domain.models.exam import (
         BankStatus,
         Difficulty,
@@ -234,7 +234,7 @@ async def _run_regeneration(
         QuestionType,
     )
 
-    async with AsyncSessionLocal() as db:
+    async with celery_db() as db:
         bank = await db.get(ExamBank, uuid.UUID(bank_id))
         scenario = await db.get(ExamScenario, uuid.UUID(scenario_id))
         if not bank or not scenario:

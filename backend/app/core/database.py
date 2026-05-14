@@ -1,9 +1,11 @@
 from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 
 import structlog
 from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.pool import NullPool
 
 from app.core.config import settings
 
@@ -47,6 +49,37 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             raise
         finally:
             await session.close()
+
+
+@asynccontextmanager
+async def celery_db():
+    """Fresh DB session for Celery tasks — NullPool avoids event-loop reuse issues.
+
+    Each asyncio.run() in a Celery task creates a new event loop. Using the
+    global pooled engine causes 'Future attached to a different loop' errors
+    because asyncpg connections are bound to the loop that created them.
+    NullPool creates/destroys connections per-request, safe across loop boundaries.
+    """
+    task_engine = create_async_engine(settings.database_url, poolclass=NullPool)
+    event.listen(
+        task_engine.sync_engine,
+        "connect",
+        lambda conn, _: conn.cursor().execute(
+            f"SET search_path TO public, {settings.database_schema}"
+        ),
+    )
+    session_factory = async_sessionmaker(
+        bind=task_engine, class_=AsyncSession, expire_on_commit=False
+    )
+    async with session_factory() as session:
+        try:
+            yield session
+        except Exception:
+            await session.rollback()
+            raise
+        finally:
+            await session.close()
+    await task_engine.dispose()
 
 
 async def create_schema() -> None:

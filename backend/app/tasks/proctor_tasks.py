@@ -39,7 +39,7 @@ def analyze_snapshot(self, snapshot_id: str) -> dict:  # type: ignore[type-arg]
 async def _analyze_snapshot_async(snapshot_id: str) -> dict:  # type: ignore[type-arg]
     from anthropic import Anthropic
 
-    from app.core.database import AsyncSessionLocal
+    from app.core.database import celery_db
     from app.domain.models.proctor import (  # type: ignore[attr-defined]
         EventSeverity,
         ProctorAlert,
@@ -48,7 +48,7 @@ async def _analyze_snapshot_async(snapshot_id: str) -> dict:  # type: ignore[typ
         SnapshotAnalysis,
     )
 
-    async with AsyncSessionLocal() as db:
+    async with celery_db() as db:
         snap = await db.get(ProctorSnapshot, _uuid_module.UUID(snapshot_id))
         if not snap:
             logger.warning("analyze_snapshot_not_found", snapshot_id=snapshot_id)
@@ -207,7 +207,7 @@ async def _check_heartbeat_async() -> dict:  # type: ignore[type-arg]
     import redis as sync_redis_lib
     from sqlalchemy import select
 
-    from app.core.database import AsyncSessionLocal
+    from app.core.database import celery_db
     from app.domain.models.proctor import (  # type: ignore[attr-defined]
         EventSeverity,
         ExamSession,
@@ -218,7 +218,7 @@ async def _check_heartbeat_async() -> dict:  # type: ignore[type-arg]
 
     threshold = datetime.now(UTC) - timedelta(seconds=75)  # 2.5 × heartbeat interval
 
-    async with AsyncSessionLocal() as db:
+    async with celery_db() as db:
         result = await db.execute(
             select(ExamSession).where(
                 ExamSession.status == SessionStatus.active,
@@ -300,10 +300,10 @@ def finalize_session(session_id: str, reason: str = "exam_submitted") -> dict:  
 
 
 async def _finalize_session_async(session_id: str, reason: str) -> dict:  # type: ignore[type-arg]
-    from app.core.database import AsyncSessionLocal
+    from app.core.database import celery_db
     from app.domain.models.proctor import ExamSession, SessionStatus  # type: ignore[attr-defined]
 
-    async with AsyncSessionLocal() as db:
+    async with celery_db() as db:
         session = await db.get(ExamSession, _uuid_module.UUID(session_id))
         if session and session.status == SessionStatus.active:
             session.status = SessionStatus.completed
