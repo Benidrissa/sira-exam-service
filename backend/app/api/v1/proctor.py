@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from fastapi import APIRouter, Header, HTTPException, status
 from sqlalchemy import select
 
-from app.api.deps import DB, CurrentUser
+from app.api.deps import DB, CurrentUser, TeacherUser
 from app.domain.models.proctor import ExamSession, ProctorSnapshot, SessionStatus
 from app.domain.services import proctor_session_service
 from app.infrastructure.exam_evidence import (
@@ -28,6 +28,7 @@ from app.schemas.proctor import (
     SnapshotUploadUrlResponse,
     StartSessionRequest,
     StartSessionResponse,
+    TerminateSessionRequest,
 )
 
 router = APIRouter(prefix="/proctor", tags=["proctor"])
@@ -43,11 +44,18 @@ def _uid(user: CurrentUser) -> uuid.UUID:
 
 
 def _org(user: CurrentUser) -> uuid.UUID:
-    return uuid.UUID(user.org_id) if user.org_id else uuid.UUID(int=0)
+    if not user.org_id:
+        raise HTTPException(status_code=403, detail="Missing org_id in token")
+    return uuid.UUID(user.org_id)
 
 
-async def _get_session_or_404(db: DB, session_id: uuid.UUID) -> ExamSession:
-    session = await db.get(ExamSession, session_id)
+async def _get_session_or_404(db: DB, session_id: uuid.UUID, org_id: uuid.UUID) -> ExamSession:
+    session = await db.scalar(
+        select(ExamSession).where(
+            ExamSession.id == session_id,
+            ExamSession.org_id == org_id,
+        )
+    )
     if session is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found.")
     return session
@@ -129,7 +137,7 @@ async def record_consent(
     user: CurrentUser,
 ) -> ConsentResponse:
     """Record student consent for proctoring (FR-2.10)."""
-    session = await _get_session_or_404(db, session_id)
+    session = await _get_session_or_404(db, session_id, _org(user))
     if session.user_id != _uid(user):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden.")
     session.consent_given = body.consent_given
@@ -160,7 +168,7 @@ async def snapshot_upload_url(
     snapshot_id: uuid.UUID,
 ) -> SnapshotUploadUrlResponse:
     """Return a presigned PUT URL for uploading a webcam snapshot (FR-2.7)."""
-    session = await _get_session_or_404(db, session_id)
+    session = await _get_session_or_404(db, session_id, _org(user))
     if session.user_id != _uid(user):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden.")
     key = f"snapshots/{session_id}/{snapshot_id}.jpg"
@@ -185,7 +193,7 @@ async def snapshot_recorded(
     user: CurrentUser,
 ) -> SnapshotRecordedResponse:
     """Create a ProctorSnapshot row and enqueue AI analysis (FR-2.7)."""
-    session = await _get_session_or_404(db, session_id)
+    session = await _get_session_or_404(db, session_id, _org(user))
     if session.user_id != _uid(user):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden.")
 
@@ -224,7 +232,7 @@ async def reference_frame_upload_url(
     user: CurrentUser,
 ) -> ReferenceFrameUploadUrlResponse:
     """Return a presigned PUT URL for uploading the student ID / reference photo."""
-    session = await _get_session_or_404(db, session_id)
+    session = await _get_session_or_404(db, session_id, _org(user))
     if session.user_id != _uid(user):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden.")
     url = await get_reference_frame_upload_url(str(session_id))
@@ -247,7 +255,7 @@ async def reference_frame_recorded(
     user: CurrentUser,
 ) -> ReferenceFrameRecordedResponse:
     """Store the MinIO key for the student's reference photo."""
-    session = await _get_session_or_404(db, session_id)
+    session = await _get_session_or_404(db, session_id, _org(user))
     if session.user_id != _uid(user):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden.")
     session.reference_frame_key = body.storage_key
@@ -280,3 +288,21 @@ async def get_session(
     if session is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found.")
     return ExamSessionResponse.model_validate(session)
+
+
+# ---------------------------------------------------------------------------
+# E2-2: Terminate session (teacher only)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/sessions/{session_id}/terminate", response_model=ExamSessionResponse)
+async def terminate_session(
+    session_id: uuid.UUID,
+    body: TerminateSessionRequest,
+    user: TeacherUser,
+    db: DB,
+) -> ExamSessionResponse:
+    """Terminate an active session (teacher only, FR-2.2)."""
+    await _get_session_or_404(db, session_id, _org(user))
+    updated = await proctor_session_service.terminate_session(db, session_id=session_id, reason=body.reason)
+    return ExamSessionResponse.model_validate(updated)
