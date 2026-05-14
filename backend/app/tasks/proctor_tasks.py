@@ -138,9 +138,7 @@ async def _analyze_snapshot_async(snapshot_id: str) -> dict:  # type: ignore[typ
         await db.commit()
 
         if result["violation_detected"] and result["confidence"] >= 0.7:
-            severity = (
-                EventSeverity.high if result["confidence"] >= 0.85 else EventSeverity.medium
-            )
+            severity = EventSeverity.high if result["confidence"] >= 0.85 else EventSeverity.medium
             event = ProctorEvent(
                 id=_uuid_module.uuid4(),
                 session_id=snap.session_id,
@@ -264,9 +262,7 @@ async def _check_heartbeat_async() -> dict:  # type: ignore[type-arg]
                         id=_uuid_module.uuid4(),
                         session_id=session.id,
                         severity=EventSeverity.critical,
-                        message=(
-                            f"Session auto-expired: {missed} consecutive missed heartbeats"
-                        ),
+                        message=(f"Session auto-expired: {missed} consecutive missed heartbeats"),
                     )
                     db.add(alert)
 
