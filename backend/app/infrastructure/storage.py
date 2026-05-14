@@ -1,4 +1,5 @@
 """MinIO/S3 storage for exam evidence (private ACL, presigned URLs)."""
+
 from __future__ import annotations
 
 import io
@@ -17,7 +18,9 @@ PRESIGNED_EXPIRY = 300  # seconds
 class ExamEvidenceStorage:
     def __init__(self) -> None:
         self._session = aiobotocore.session.get_session()
-        self._endpoint = f"{'https' if settings.minio_use_ssl else 'http'}://{settings.minio_endpoint}"
+        self._endpoint = (
+            f"{'https' if settings.minio_use_ssl else 'http'}://{settings.minio_endpoint}"
+        )
         self._bucket = settings.minio_exam_bucket
 
     def _client_kwargs(self) -> dict:
@@ -36,7 +39,9 @@ class ExamEvidenceStorage:
                 await client.create_bucket(Bucket=self._bucket)
                 logger.info("exam_bucket_created", bucket=self._bucket)
 
-    async def upload(self, key: str, data: bytes, content_type: str = "application/octet-stream") -> str:
+    async def upload(
+        self, key: str, data: bytes, content_type: str = "application/octet-stream"
+    ) -> str:
         async with self._session.create_client(**self._client_kwargs()) as client:
             await client.put_object(
                 Bucket=self._bucket,
