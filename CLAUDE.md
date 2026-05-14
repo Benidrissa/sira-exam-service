@@ -105,6 +105,44 @@ Maximize parallel tool calls at every subsequent step.
 
 ---
 
+## PR Merge Pipeline (MANDATORY — every feature PR)
+
+Run these 5 steps in order before picking the next issue:
+
+```
+1. AGENT CODE REVIEW
+   Spawn a review agent to read all changed files and check:
+   - SRS FR alignment (does implementation match the linked FR?)
+   - ruff + mypy compliance (no lint errors)
+   - Test coverage ≥30% (new code has tests)
+   - org_id filtering on all DB queries (no cross-tenant data leaks)
+   - No hardcoded secrets or credentials
+   - Celery tasks are idempotent (safe to retry)
+   Output: APPROVE or REQUEST_CHANGES with file:line specifics.
+   Fix all REQUEST_CHANGES before proceeding.
+
+2. MERGE feature → dev  (squash merge)
+   gh pr merge <number> --squash --delete-branch
+
+3. MERGE dev → main  (phase boundary only — not per-issue)
+   Only when an entire phase milestone is complete.
+   gh pr create --base main --head dev --title "chore: Phase X complete"
+   gh pr merge <number> --merge
+
+4. CURL STAGING HEALTH CHECK  (after main merges → deploy auto-triggers)
+   until curl -sf https://sira-exam-api.elearning.portfolio2.kimbetien.com/health; do
+     echo "waiting for deploy..."; sleep 15; done
+   curl -s https://sira-exam-api.elearning.portfolio2.kimbetien.com/health | jq .
+
+5. BROWSER UAT VALIDATION
+   Open https://sira-exam.elearning.portfolio2.kimbetien.com
+   Run the relevant UAT scenario from docs/USER_STORIES.md
+   Check each AC: pass ✅ / fail ❌
+   Post result as comment on the GitHub issue, then close it.
+```
+
+---
+
 ## Stack Quick Reference
 - Backend API: http://localhost:8001 | Docs: http://localhost:8001/docs
 - Frontend: http://localhost:3001
