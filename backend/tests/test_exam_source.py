@@ -46,8 +46,10 @@ async def test_upload_source_success(mock_db: AsyncMock, mock_storage: AsyncMock
     source = _make_source()
     mock_db.refresh = AsyncMock(side_effect=lambda s: None)
 
-    with patch("app.domain.services.exam_source_service.ExamSource", return_value=source), \
-         patch("app.tasks.extraction.extract_exam_source_task") as mock_task:
+    with (
+        patch("app.domain.services.exam_source_service.ExamSource", return_value=source),
+        patch("app.tasks.extraction.extract_exam_source_task") as mock_task,
+    ):
         mock_task.delay = MagicMock()
         result = await exam_source_service.upload_source(
             mock_db,
