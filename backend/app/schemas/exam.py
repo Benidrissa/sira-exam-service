@@ -258,6 +258,45 @@ class BulkValidationResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Generation (E1-3, E1-4)
+# ---------------------------------------------------------------------------
+
+
+class ScenarioBrief(BaseModel):
+    title: str = Field(..., min_length=1, max_length=300)
+    objective: str | None = Field(None, max_length=1000)
+    question_count: int = Field(3, ge=1, le=20)
+
+
+class GenerateBriefRequest(BaseModel):
+    test_objective: str = Field(..., min_length=1, max_length=1000)
+    scenarios_brief: list[ScenarioBrief] = Field(..., min_length=1, max_length=10)
+
+
+class GenerationStatusResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    bank_id: uuid.UUID
+    task_id: str | None
+    status: BankStatus
+    task_state: str | None
+    progress_pct: int | None
+    scenario_count: int | None
+    error_message: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class RegenerateRequest(BaseModel):
+    test_objective: str | None = Field(None, min_length=1, max_length=1000)
+
+
+# ---------------------------------------------------------------------------
+# DissertationAnswer
+# ---------------------------------------------------------------------------
+
+
 class DissertationAnswerResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
