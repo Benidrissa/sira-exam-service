@@ -141,3 +141,53 @@ export interface StartAttemptResponse {
   time_limit_minutes: number | null;
   questions: ExamQuestion[];
 }
+
+// ---------------------------------------------------------------------------
+// Proctoring types
+// ---------------------------------------------------------------------------
+
+export interface ProctoringSession {
+  session_id: string;
+  session_token: string;
+  expires_in: number;
+}
+
+export interface SessionSummary {
+  id: string;
+  user_id: string;
+  started_at: string;
+  status: "active" | "terminated" | "expired" | "completed";
+  unacked_alert_count: number;
+  latest_snapshot_url: string | null;
+  consecutive_missed_heartbeats: number;
+}
+
+export interface ProctorAlert {
+  id: string;
+  severity: "info" | "low" | "medium" | "high" | "critical";
+  message: string;
+  acknowledged: boolean;
+  created_at: string;
+}
+
+export interface SessionEvent {
+  id: string;
+  event_type: string;
+  severity: string;
+  occurred_at: string;
+  payload: unknown;
+}
+
+export interface SessionSnapshot {
+  id: string;
+  storage_key: string;
+  taken_at: string;
+  violation_detected: boolean | null;
+  download_url: string | null;
+}
+
+export interface SessionDetail extends SessionSummary {
+  events: SessionEvent[];
+  alerts: ProctorAlert[];
+  snapshots: SessionSnapshot[];
+}
