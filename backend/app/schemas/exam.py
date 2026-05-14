@@ -239,6 +239,21 @@ class ExamAttemptResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Bulk question create + validation (E1-5, E1-6)
+# ---------------------------------------------------------------------------
+
+
+class ExamQuestionBulkCreate(BaseModel):
+    questions: list[ExamQuestionCreate] = Field(..., min_length=1, max_length=500)
+
+
+class BulkValidationResponse(BaseModel):
+    bank_id: uuid.UUID
+    validated_count: int
+    bank_status: BankStatus
+
+
+# ---------------------------------------------------------------------------
 # DissertationAnswer
 # ---------------------------------------------------------------------------
 
