@@ -16,6 +16,8 @@ services:
     image: ghcr.io/benidrissa/sira-exam-service/exam-backend:latest
     restart: unless-stopped
     env_file: .env
+    environment:
+      - DEBUG=true
     networks:
       - sira-exam
       - proxy
@@ -56,6 +58,8 @@ services:
     image: ghcr.io/benidrissa/sira-exam-service/exam-frontend:latest
     restart: unless-stopped
     env_file: .env
+    environment:
+      - NEXT_PUBLIC_DEV_LOGIN=true
     networks:
       - sira-exam
       - proxy

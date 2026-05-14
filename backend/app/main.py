@@ -59,6 +59,12 @@ app.include_router(proctor_router, prefix="/api/v1")
 app.include_router(ws_router)
 app.include_router(proctor_monitor_router, prefix="/api/v1")
 
+if settings.debug:
+    from app.api.v1.dev import router as dev_router
+
+    app.include_router(dev_router, prefix="/api/v1")
+    logger.info("dev_token_endpoint_enabled")
+
 
 @app.get("/health")
 async def health() -> dict:
