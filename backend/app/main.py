@@ -8,6 +8,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.exam import router as exam_router
 from app.api.v1.proctor import router as proctor_router
+from app.api.v1.proctor_monitor import router as proctor_monitor_router
+from app.api.v1.ws import router as ws_router
 from app.core.config import settings
 from app.core.database import create_schema
 
@@ -31,6 +33,8 @@ app.add_middleware(
 
 app.include_router(exam_router, prefix="/api/v1")
 app.include_router(proctor_router, prefix="/api/v1")
+app.include_router(ws_router)
+app.include_router(proctor_monitor_router, prefix="/api/v1")
 
 
 @app.on_event("startup")
@@ -42,6 +46,14 @@ async def startup() -> None:
     await get_exam_storage().ensure_bucket()
     await ensure_exam_evidence_bucket()
     logger.info("sira_exam_service_started", frontend_url=settings.frontend_url)
+
+
+@app.on_event("shutdown")
+async def shutdown() -> None:
+    from app.core.redis_client import close_redis
+
+    await close_redis()
+    logger.info("sira_exam_service_stopped")
 
 
 @app.get("/health")
