@@ -1,4 +1,5 @@
 """Epic 1 data models — exam generation, review, and taking."""
+
 from __future__ import annotations
 
 import enum
@@ -11,10 +12,10 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
 
-
 # ---------------------------------------------------------------------------
 # Enums
 # ---------------------------------------------------------------------------
+
 
 class ExtractionStatus(str, enum.Enum):
     pending = "pending"
@@ -64,12 +65,19 @@ class DissertationStatus(str, enum.Enum):
 # Models
 # ---------------------------------------------------------------------------
 
+
 class ExamSource(Base):
     """Uploaded source document (PDF/Word) for exam generation."""
+
     __tablename__ = "exam_sources"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    bank_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("exam_banks.id", ondelete="CASCADE"), nullable=False, index=True)
+    bank_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("exam_banks.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     filename: Mapped[str] = mapped_column(Text, nullable=False)
     storage_key: Mapped[str] = mapped_column(Text, nullable=False)
     raw_text: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -79,6 +87,7 @@ class ExamSource(Base):
         nullable=False,
         default=ExtractionStatus.pending,
     )
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     bank: Mapped[ExamBank] = relationship("ExamBank", back_populates="sources")
@@ -86,6 +95,7 @@ class ExamSource(Base):
 
 class ExamBank(Base):
     """Top-level exam container (one bank = one exam)."""
+
     __tablename__ = "exam_banks"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -104,39 +114,73 @@ class ExamBank(Base):
     generation_task_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     generation_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
 
-    sources: Mapped[list[ExamSource]] = relationship("ExamSource", back_populates="bank", cascade="all, delete-orphan")
-    scenarios: Mapped[list[ExamScenario]] = relationship("ExamScenario", back_populates="bank", cascade="all, delete-orphan", order_by="ExamScenario.order_index")
-    questions: Mapped[list[ExamQuestion]] = relationship("ExamQuestion", back_populates="bank", cascade="all, delete-orphan")
-    tests: Mapped[list[ExamTest]] = relationship("ExamTest", back_populates="bank", cascade="all, delete-orphan")
+    sources: Mapped[list[ExamSource]] = relationship(
+        "ExamSource", back_populates="bank", cascade="all, delete-orphan"
+    )
+    scenarios: Mapped[list[ExamScenario]] = relationship(
+        "ExamScenario",
+        back_populates="bank",
+        cascade="all, delete-orphan",
+        order_by="ExamScenario.order_index",
+    )
+    questions: Mapped[list[ExamQuestion]] = relationship(
+        "ExamQuestion", back_populates="bank", cascade="all, delete-orphan"
+    )
+    tests: Mapped[list[ExamTest]] = relationship(
+        "ExamTest", back_populates="bank", cascade="all, delete-orphan"
+    )
 
 
 class ExamScenario(Base):
     """One scenario contains multiple questions (case study / reading passage)."""
+
     __tablename__ = "exam_scenarios"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    bank_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("exam_banks.id", ondelete="CASCADE"), nullable=False, index=True)
+    bank_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("exam_banks.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     title: Mapped[str] = mapped_column(Text, nullable=False)
     objective: Mapped[str | None] = mapped_column(Text, nullable=True)
     context_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     context_image_storage_key: Mapped[str | None] = mapped_column(Text, nullable=True)
     order_index: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
 
     bank: Mapped[ExamBank] = relationship("ExamBank", back_populates="scenarios")
-    questions: Mapped[list[ExamQuestion]] = relationship("ExamQuestion", back_populates="scenario", order_by="ExamQuestion.order_index")
+    questions: Mapped[list[ExamQuestion]] = relationship(
+        "ExamQuestion", back_populates="scenario", order_by="ExamQuestion.order_index"
+    )
 
 
 class ExamQuestion(Base):
     """Individual question — MCQ or dissertation."""
+
     __tablename__ = "exam_questions"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    bank_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("exam_banks.id", ondelete="CASCADE"), nullable=False, index=True)
-    scenario_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("exam_scenarios.id", ondelete="SET NULL"), nullable=True, index=True)
+    bank_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("exam_banks.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    scenario_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("exam_scenarios.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     question_type: Mapped[QuestionType] = mapped_column(
         Enum(QuestionType, name="questiontype", create_type=False),
         nullable=False,
@@ -147,12 +191,14 @@ class ExamQuestion(Base):
     image_storage_key: Mapped[str | None] = mapped_column(Text, nullable=True)
     image_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     # MCQ fields
-    options: Mapped[list | None] = mapped_column(JSONB, nullable=True)           # [{label, text}]
+    options: Mapped[list | None] = mapped_column(JSONB, nullable=True)  # [{label, text}]
     correct_answer_indices: Mapped[list | None] = mapped_column(JSONB, nullable=True)  # [int]
     explanation: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Dissertation fields
     model_answer: Mapped[str | None] = mapped_column(Text, nullable=True)
-    rubric: Mapped[list | None] = mapped_column(JSONB, nullable=True)            # [{criterion, max_points, description}]
+    rubric: Mapped[list | None] = mapped_column(
+        JSONB, nullable=True
+    )  # [{criterion, max_points, description}]
     # Metadata
     difficulty: Mapped[Difficulty] = mapped_column(
         Enum(Difficulty, name="difficulty", create_type=False),
@@ -164,7 +210,9 @@ class ExamQuestion(Base):
     ai_generated: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     validated: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
 
     bank: Mapped[ExamBank] = relationship("ExamBank", back_populates="questions")
     scenario: Mapped[ExamScenario | None] = relationship("ExamScenario", back_populates="questions")
@@ -172,10 +220,16 @@ class ExamQuestion(Base):
 
 class ExamTest(Base):
     """Test configuration wrapping an ExamBank."""
+
     __tablename__ = "exam_tests"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    bank_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("exam_banks.id", ondelete="CASCADE"), nullable=False, index=True)
+    bank_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("exam_banks.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     title: Mapped[str] = mapped_column(Text, nullable=False)
     mode: Mapped[TestMode] = mapped_column(
@@ -195,18 +249,28 @@ class ExamTest(Base):
         default=TestStatus.draft,
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
 
     bank: Mapped[ExamBank] = relationship("ExamBank", back_populates="tests")
-    attempts: Mapped[list[ExamAttempt]] = relationship("ExamAttempt", back_populates="test", cascade="all, delete-orphan")
+    attempts: Mapped[list[ExamAttempt]] = relationship(
+        "ExamAttempt", back_populates="test", cascade="all, delete-orphan"
+    )
 
 
 class ExamAttempt(Base):
     """A student's attempt at an ExamTest."""
+
     __tablename__ = "exam_attempts"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    test_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("exam_tests.id", ondelete="CASCADE"), nullable=False, index=True)
+    test_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("exam_tests.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
     question_ids: Mapped[list] = mapped_column(JSONB, nullable=False)
     mcq_answers: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
@@ -214,22 +278,35 @@ class ExamAttempt(Base):
     total_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     passed: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     time_taken_sec: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    attempted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    attempted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
 
     test: Mapped[ExamTest] = relationship("ExamTest", back_populates="attempts")
-    dissertation_answers: Mapped[list[DissertationAnswer]] = relationship("DissertationAnswer", back_populates="attempt", cascade="all, delete-orphan")
+    dissertation_answers: Mapped[list[DissertationAnswer]] = relationship(
+        "DissertationAnswer", back_populates="attempt", cascade="all, delete-orphan"
+    )
 
 
 class DissertationAnswer(Base):
     """Student answer to a dissertation question, with AI + human scoring."""
+
     __tablename__ = "dissertation_answers"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    attempt_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("exam_attempts.id", ondelete="CASCADE"), nullable=False, index=True)
-    question_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("exam_questions.id"), nullable=False, index=True)
+    attempt_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("exam_attempts.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    question_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("exam_questions.id"), nullable=False, index=True
+    )
     answer_text: Mapped[str] = mapped_column(Text, nullable=False)
     ai_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     ai_feedback: Mapped[str | None] = mapped_column(Text, nullable=True)
+    criterion_scores: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     ai_scored_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     human_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     human_feedback: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -242,5 +319,7 @@ class DissertationAnswer(Base):
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    attempt: Mapped[ExamAttempt] = relationship("ExamAttempt", back_populates="dissertation_answers")
+    attempt: Mapped[ExamAttempt] = relationship(
+        "ExamAttempt", back_populates="dissertation_answers"
+    )
     question: Mapped[ExamQuestion] = relationship("ExamQuestion")

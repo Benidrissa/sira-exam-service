@@ -3,6 +3,7 @@
 The exam service never issues its own tokens. It only validates Sira JWTs
 and reads user_id, role, org_id from claims. No database lookup required.
 """
+
 from __future__ import annotations
 
 import jwt

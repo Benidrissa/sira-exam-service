@@ -1,4 +1,5 @@
 """Celery task: extract raw text from uploaded source documents (PDF)."""
+
 from __future__ import annotations
 
 import asyncio
@@ -23,6 +24,7 @@ async def _extract(source_id: str) -> dict:
 
     async with AsyncSessionLocal() as db:
         from sqlalchemy import select
+
         result = await db.execute(select(ExamSource).where(ExamSource.id == uuid.UUID(source_id)))
         source = result.scalar_one_or_none()
         if not source:

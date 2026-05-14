@@ -14,6 +14,11 @@ on:
           - staging
           - production
 
+env:
+  REGISTRY: ghcr.io
+  BACKEND_IMAGE: ghcr.io/${{ github.repository }}/exam-backend
+  FRONTEND_IMAGE: ghcr.io/${{ github.repository }}/exam-frontend
+
 jobs:
   build-and-push:
     name: Build & Push Images
@@ -21,6 +26,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+    outputs:
+      sha: ${{ steps.meta.outputs.sha }}
 
     steps:
       - uses: actions/checkout@v4
@@ -32,37 +39,193 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - id: meta
+        run: echo "sha=${GITHUB_SHA:0:7}" >> $GITHUB_OUTPUT
+
       - name: Build & push backend
         uses: docker/build-push-action@v5
         with:
           context: ./backend
           push: true
-          tags: ghcr.io/${{ github.repository }}/exam-backend:${{ github.sha }},ghcr.io/${{ github.repository }}/exam-backend:latest
+          tags: |
+            ${{ env.BACKEND_IMAGE }}:${{ steps.meta.outputs.sha }}
+            ${{ env.BACKEND_IMAGE }}:latest
 
       - name: Build & push frontend
         uses: docker/build-push-action@v5
         with:
           context: ./frontend
           push: true
-          tags: ghcr.io/${{ github.repository }}/exam-frontend:${{ github.sha }},ghcr.io/${{ github.repository }}/exam-frontend:latest
+          tags: |
+            ${{ env.FRONTEND_IMAGE }}:${{ steps.meta.outputs.sha }}
+            ${{ env.FRONTEND_IMAGE }}:latest
 
-  deploy:
-    name: Deploy to Server
+  deploy-staging:
+    name: Deploy to Staging
     needs: build-and-push
     runs-on: ubuntu-latest
-    environment: ${{ github.event.inputs.environment || 'staging' }}
+    environment: staging
+    if: github.event_name == 'push' || github.event.inputs.environment == 'staging'
 
     steps:
-      - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1
+      - uses: actions/checkout@v4
+
+      - name: Copy compose file to staging
+        uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
+          source: "docker-compose.staging.yml"
+          target: "/home/deploy/sira-exam-service/"
+
+      - name: Deploy to staging via SSH
+        uses: appleboy/ssh-action@v1
+        env:
+          SHA: ${{ needs.build-and-push.outputs.sha }}
+          REGISTRY: ghcr.io
+          REPO: ${{ github.repository }}
+          SIRA_JWT_SECRET: ${{ secrets.SIRA_JWT_SECRET }}
+          DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+          REDIS_URL: ${{ secrets.STAGING_REDIS_URL }}
+          MINIO_ENDPOINT: ${{ secrets.STAGING_MINIO_ENDPOINT }}
+          MINIO_ACCESS_KEY: ${{ secrets.MINIO_ACCESS_KEY }}
+          MINIO_SECRET_KEY: ${{ secrets.MINIO_SECRET_KEY }}
+          EXAM_ANTHROPIC_API_KEY: ${{ secrets.EXAM_ANTHROPIC_API_KEY }}
+          EXAM_WATERMARK_SECRET: ${{ secrets.EXAM_WATERMARK_SECRET }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          envs: SHA,REGISTRY,REPO,SIRA_JWT_SECRET,DATABASE_URL,REDIS_URL,MINIO_ENDPOINT,MINIO_ACCESS_KEY,MINIO_SECRET_KEY,EXAM_ANTHROPIC_API_KEY,EXAM_WATERMARK_SECRET,SENTRY_DSN
           command_timeout: 30m
           script: |
+            set -e
             cd /home/deploy/sira-exam-service
-            docker compose pull
-            docker compose up -d --no-build
+
+            # Write .env
+            cat > .env <<ENVEOF
+            SIRA_JWT_SECRET=${SIRA_JWT_SECRET}
+            DATABASE_URL=${DATABASE_URL}
+            DATABASE_SCHEMA=exam_svc
+            REDIS_URL=${REDIS_URL}
+            MINIO_ENDPOINT=${MINIO_ENDPOINT}
+            MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}
+            MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
+            MINIO_EXAM_BUCKET=exam-evidence
+            MINIO_USE_SSL=false
+            EXAM_ANTHROPIC_API_KEY=${EXAM_ANTHROPIC_API_KEY}
+            EXAM_WATERMARK_SECRET=${EXAM_WATERMARK_SECRET}
+            SENTRY_DSN=${SENTRY_DSN}
+            NEXT_PUBLIC_EXAM_API_URL=https://sira-exam-api.elearning.portfolio2.kimbetien.com/api/v1
+            ENVEOF
+
+            # Pre-deploy DB backup
+            mkdir -p backups
+            docker exec sira-postgres pg_dump -U postgres sira_db | gzip > backups/pre-deploy-${SHA}-$(date +%Y%m%d%H%M%S).sql.gz 2>/dev/null || true
+            # Keep last 7 days
+            find backups -name "pre-deploy-*.sql.gz" -mtime +7 -delete 2>/dev/null || true
+
+            # Pull exact SHA images
+            docker pull ${REGISTRY}/${REPO}/exam-backend:${SHA}
+            docker pull ${REGISTRY}/${REPO}/exam-frontend:${SHA}
+
+            # Tag as latest for compose
+            docker tag ${REGISTRY}/${REPO}/exam-backend:${SHA} ${REGISTRY}/${REPO}/exam-backend:latest
+            docker tag ${REGISTRY}/${REPO}/exam-frontend:${SHA} ${REGISTRY}/${REPO}/exam-frontend:latest
+
+            cp docker-compose.staging.yml docker-compose.yml
+
+            # Up
+            docker compose up -d --remove-orphans
+
+            # Migrations
             docker compose run --rm backend alembic upgrade head
-            echo "Deploy complete: $(date)"
+
+            # Force-recreate backend to pick up env changes
+            docker compose up -d --force-recreate backend
+
+            # Health check
+            sleep 10
+            curl -sf https://sira-exam-api.elearning.portfolio2.kimbetien.com/health || \
+              (echo "Health check failed — rolling back to previous sha" && \
+               docker compose down && exit 1)
+
+            echo "Staging deploy complete: ${SHA} @ $(date)"
+
+  deploy-production:
+    name: Deploy to Production
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    environment: production
+    if: github.event.inputs.environment == 'production'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Copy compose file to production
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.PROD_DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.PROD_DEPLOY_SSH_KEY }}
+          source: "docker-compose.staging.yml"
+          target: "/home/deploy/sira-exam-service/"
+
+      - name: Deploy to production via SSH
+        uses: appleboy/ssh-action@v1
+        env:
+          SHA: ${{ needs.build-and-push.outputs.sha }}
+          REGISTRY: ghcr.io
+          REPO: ${{ github.repository }}
+          SIRA_JWT_SECRET: ${{ secrets.PROD_SIRA_JWT_SECRET }}
+          DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+          REDIS_URL: ${{ secrets.PROD_REDIS_URL }}
+          MINIO_ENDPOINT: ${{ secrets.PROD_MINIO_ENDPOINT }}
+          MINIO_ACCESS_KEY: ${{ secrets.PROD_MINIO_ACCESS_KEY }}
+          MINIO_SECRET_KEY: ${{ secrets.PROD_MINIO_SECRET_KEY }}
+          EXAM_ANTHROPIC_API_KEY: ${{ secrets.EXAM_ANTHROPIC_API_KEY }}
+          EXAM_WATERMARK_SECRET: ${{ secrets.PROD_EXAM_WATERMARK_SECRET }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+        with:
+          host: ${{ secrets.PROD_DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.PROD_DEPLOY_SSH_KEY }}
+          envs: SHA,REGISTRY,REPO,SIRA_JWT_SECRET,DATABASE_URL,REDIS_URL,MINIO_ENDPOINT,MINIO_ACCESS_KEY,MINIO_SECRET_KEY,EXAM_ANTHROPIC_API_KEY,EXAM_WATERMARK_SECRET,SENTRY_DSN
+          command_timeout: 30m
+          script: |
+            set -e
+            cd /home/deploy/sira-exam-service
+
+            cat > .env <<ENVEOF
+            SIRA_JWT_SECRET=${SIRA_JWT_SECRET}
+            DATABASE_URL=${DATABASE_URL}
+            DATABASE_SCHEMA=exam_svc
+            REDIS_URL=${REDIS_URL}
+            MINIO_ENDPOINT=${MINIO_ENDPOINT}
+            MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}
+            MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
+            MINIO_EXAM_BUCKET=exam-evidence
+            MINIO_USE_SSL=false
+            EXAM_ANTHROPIC_API_KEY=${EXAM_ANTHROPIC_API_KEY}
+            EXAM_WATERMARK_SECRET=${EXAM_WATERMARK_SECRET}
+            SENTRY_DSN=${SENTRY_DSN}
+            NEXT_PUBLIC_EXAM_API_URL=https://sira-exam-api.sira-donnia.org/api/v1
+            ENVEOF
+
+            docker pull ${REGISTRY}/${REPO}/exam-backend:${SHA}
+            docker pull ${REGISTRY}/${REPO}/exam-frontend:${SHA}
+            docker tag ${REGISTRY}/${REPO}/exam-backend:${SHA} ${REGISTRY}/${REPO}/exam-backend:latest
+            docker tag ${REGISTRY}/${REPO}/exam-frontend:${SHA} ${REGISTRY}/${REPO}/exam-frontend:latest
+
+            cp docker-compose.staging.yml docker-compose.yml
+            docker compose up -d --remove-orphans
+            docker compose run --rm backend alembic upgrade head
+            docker compose up -d --force-recreate backend
+
+            sleep 10
+            curl -sf https://sira-exam-api.sira-donnia.org/health || \
+              (echo "Health check failed" && docker compose down && exit 1)
+
+            echo "Production deploy complete: ${SHA} @ $(date)"
