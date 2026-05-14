@@ -239,7 +239,7 @@ Tables: `exam_sessions`, `proctor_snapshots`, `proctor_events`, `exam_violations
 ### FR-2.2: ExamSession Model + Token Issuance + Heartbeat
 **GitHub Issue:** #20
 
-- FR-2.2.1: `ExamSession` extends `ExamAttempt` with HMAC `session_token`, `phase` (center/remote), `proctor_id`, `violation_count`, `last_heartbeat_at`, `connectivity_tier`, `status`.
+- FR-2.2.1: `ExamSession` extends `ExamAttempt` with SHA-256 hash of cryptographically random token (secrets.token_urlsafe(32)) `session_token`, `phase` (center/remote), `proctor_id`, `violation_count`, `last_heartbeat_at`, `connectivity_tier`, `status`.
 - FR-2.2.2: `POST /exam/sessions` — issues token.
 - FR-2.2.3: `POST /exam/sessions/{id}/heartbeat`.
 

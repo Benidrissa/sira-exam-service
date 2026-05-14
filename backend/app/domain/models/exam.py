@@ -286,6 +286,9 @@ class ExamAttempt(Base):
     dissertation_answers: Mapped[list[DissertationAnswer]] = relationship(
         "DissertationAnswer", back_populates="attempt", cascade="all, delete-orphan"
     )
+    session: Mapped[ExamSession | None] = relationship(  # type: ignore[name-defined]  # noqa: F821
+        "ExamSession", back_populates="attempt", uselist=False
+    )
 
 
 class DissertationAnswer(Base):

@@ -2,8 +2,10 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { startAttempt, submitAttempt } from "@/lib/api";
+import { startAttempt, submitAttempt, startProctoringSession, terminateSession } from "@/lib/api";
 import type { ExamQuestion, StartAttemptResponse } from "@/types/exam";
+import { useLockdownShell } from "@/hooks/useLockdownShell";
+import { useWebcamProctor } from "@/hooks/useWebcamProctor";
 
 export default function ExamPlayerPage() {
   const { testId } = useParams<{ testId: string }>();
@@ -18,11 +20,38 @@ export default function ExamPlayerPage() {
   const [error, setError] = useState<string | null>(null);
   const startTimeRef = useRef<number>(Date.now());
 
+  // Proctoring state
+  const [proctoringSessionId, setProctoringSessionId] = useState<string | null>(null);
+  const [proctoringToken, setProctoringToken] = useState<string | null>(null);
+  const [isRemoteExam, setIsRemoteExam] = useState(false);
+
+  // Lockdown shell — enabled only for remote exams
+  useLockdownShell(isRemoteExam);
+
+  // Webcam proctoring — enabled only for remote exams
+  const { videoRef } = useWebcamProctor(
+    proctoringSessionId,
+    proctoringToken,
+    isRemoteExam,
+  );
+
   useEffect(() => {
     startAttempt(testId)
-      .then((s) => {
+      .then(async (s) => {
         setSession(s);
         if (s.time_limit_minutes) setSecondsLeft(s.time_limit_minutes * 60);
+
+        // Start proctoring session (treat all attempts as remote for now;
+        // a real implementation would check exam.mode from the test payload)
+        setIsRemoteExam(true);
+        try {
+          const ps = await startProctoringSession(s.attempt_id);
+          setProctoringSessionId(ps.session_id);
+          setProctoringToken(ps.session_token);
+        } catch (procErr) {
+          console.error("Failed to start proctoring session:", procErr);
+          // Do not block the exam — log and continue
+        }
       })
       .catch((e) => setError(String(e)))
       .finally(() => setLoading(false));
@@ -45,13 +74,23 @@ export default function ExamPlayerPage() {
         dissertation_answers: dissertations,
         time_taken_sec: elapsed,
       });
+
+      // Terminate proctoring session after exam submission
+      if (proctoringSessionId) {
+        try {
+          await terminateSession(proctoringSessionId);
+        } catch (e) {
+          console.error("Failed to terminate proctoring session:", e);
+        }
+      }
+
       setSubmitted(true);
       router.push(`/exams/${testId}/results`);
     } catch (e) {
       setError(String(e));
       setSubmitting(false);
     }
-  }, [session, mcqAnswers, dissertations, submitting, submitted, router, testId]);
+  }, [session, mcqAnswers, dissertations, submitting, submitted, router, testId, proctoringSessionId]);
 
   // Auto-submit when timer hits 0
   useEffect(() => {
@@ -112,6 +151,18 @@ export default function ExamPlayerPage() {
           }
         />
       ))}
+
+      {/* "You are being recorded" webcam badge — only shown when proctoring is active */}
+      {isRemoteExam && proctoringSessionId && (
+        <video
+          ref={videoRef}
+          autoPlay
+          muted
+          playsInline
+          className="fixed bottom-4 right-4 w-32 h-24 rounded-lg border-2 border-green-500 z-50 object-cover"
+          aria-label="Webcam proctoring feed"
+        />
+      )}
     </main>
   );
 }

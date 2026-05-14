@@ -2,13 +2,13 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
   pull_request:
-    branches: [main]
+    branches: [main, dev]
 
 jobs:
   backend:
-    name: Backend (Python)
+    name: backend
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -65,7 +65,7 @@ jobs:
           EXAM_WATERMARK_SECRET: test-watermark-secret
 
   frontend:
-    name: Frontend (Node)
+    name: frontend
     runs-on: ubuntu-latest
     defaults:
       run:

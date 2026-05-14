@@ -7,7 +7,10 @@ import type {
   ExamScenario,
   ExamSource,
   GenerationStatusResponse,
+  ProctoringSession,
   ScenarioBrief,
+  SessionDetail,
+  SessionSummary,
 } from "@/types/exam";
 
 const API_BASE =
@@ -172,3 +175,107 @@ export const getQuestions = async (
   const idSet = new Set(questionIds);
   return all.filter((q) => idSet.has(q.id));
 };
+
+// ---------------------------------------------------------------------------
+// Proctoring — student-facing
+// ---------------------------------------------------------------------------
+
+export async function startProctoringSession(
+  attemptId: string,
+): Promise<{ session_id: string; session_token: string }> {
+  return apiFetch<ProctoringSession>("/proctor/sessions/start", {
+    method: "POST",
+    body: JSON.stringify({ attempt_id: attemptId }),
+  });
+}
+
+export async function sendHeartbeat(
+  sessionId: string,
+  token: string,
+): Promise<void> {
+  await apiFetch<unknown>(`/proctor/sessions/${sessionId}/heartbeat`, {
+    method: "POST",
+    headers: { "X-Session-Token": token },
+  });
+}
+
+export async function giveConsent(sessionId: string): Promise<void> {
+  await apiFetch<unknown>(`/proctor/sessions/${sessionId}/consent`, {
+    method: "POST",
+    body: JSON.stringify({ consent_given: true }),
+  });
+}
+
+export async function getSnapshotUploadUrl(
+  sessionId: string,
+  snapshotId: string,
+): Promise<{ upload_url: string; storage_key: string }> {
+  return apiFetch<{ upload_url: string; storage_key: string }>(
+    `/proctor/sessions/${sessionId}/snapshot-upload-url?snapshot_id=${snapshotId}`,
+  );
+}
+
+export async function recordSnapshot(
+  sessionId: string,
+  snapshotId: string,
+  storageKey: string,
+): Promise<void> {
+  await apiFetch<unknown>(`/proctor/sessions/${sessionId}/snapshot-recorded`, {
+    method: "POST",
+    body: JSON.stringify({ snapshot_id: snapshotId, storage_key: storageKey }),
+  });
+}
+
+export async function getReferenceFrameUploadUrl(
+  sessionId: string,
+): Promise<{ upload_url: string }> {
+  return apiFetch<{ upload_url: string }>(
+    `/proctor/sessions/${sessionId}/reference-frame-upload-url`,
+  );
+}
+
+export async function recordReferenceFrame(
+  sessionId: string,
+  storageKey: string,
+): Promise<void> {
+  await apiFetch<unknown>(`/proctor/sessions/${sessionId}/reference-frame-recorded`, {
+    method: "POST",
+    body: JSON.stringify({ storage_key: storageKey }),
+  });
+}
+
+export async function terminateSession(sessionId: string): Promise<void> {
+  await apiFetch<unknown>(`/proctor/sessions/${sessionId}/terminate`, {
+    method: "POST",
+    body: JSON.stringify({ reason: "student_submitted" }),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Proctoring — monitor (teacher-facing)
+// ---------------------------------------------------------------------------
+
+export async function listActiveSessions(): Promise<SessionSummary[]> {
+  return apiFetch<SessionSummary[]>("/proctor/monitor/sessions?status=active");
+}
+
+export async function getSessionDetail(sessionId: string): Promise<SessionDetail> {
+  return apiFetch<SessionDetail>(`/proctor/monitor/sessions/${sessionId}`);
+}
+
+export async function acknowledgeAlert(alertId: string): Promise<void> {
+  await apiFetch<unknown>(`/proctor/monitor/alerts/${alertId}/acknowledge`, {
+    method: "PATCH",
+    body: JSON.stringify({ acknowledged_by: "proctor" }),
+  });
+}
+
+export async function terminateSessionAsProctor(
+  sessionId: string,
+  reason: string,
+): Promise<void> {
+  await apiFetch<unknown>(`/proctor/monitor/sessions/${sessionId}/terminate`, {
+    method: "PATCH",
+    body: JSON.stringify({ reason }),
+  });
+}
