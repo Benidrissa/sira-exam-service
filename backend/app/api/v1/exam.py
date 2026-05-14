@@ -7,9 +7,11 @@ import uuid
 from celery.result import AsyncResult
 from fastapi import APIRouter, File, UploadFile, status
 
-from app.api.deps import DB, TeacherUser
+from app.api.deps import DB, CurrentUser, TeacherUser
 from app.domain.models.exam import BankStatus
 from app.domain.services import (
+    exam_answer_service,
+    exam_attempt_service,
     exam_bank_service,
     exam_question_service,
     exam_scenario_service,
@@ -18,6 +20,8 @@ from app.domain.services import (
 from app.infrastructure.storage import get_exam_storage
 from app.schemas.exam import (
     BulkValidationResponse,
+    DissertationAnswerResponse,
+    ExamAttemptResponse,
     ExamBankCreate,
     ExamBankResponse,
     ExamBankUpdate,
@@ -31,7 +35,9 @@ from app.schemas.exam import (
     ExamSourceResponse,
     GenerateBriefRequest,
     GenerationStatusResponse,
+    HumanScoreUpdate,
     RegenerateRequest,
+    SubmitAttemptRequest,
 )
 from app.tasks.celery_app import celery_app
 
@@ -501,3 +507,88 @@ async def validate_all_questions(
         validated_count=validated_count,
         bank_status=bank.status,
     )
+
+
+# ---------------------------------------------------------------------------
+# E1-7 (FR-1.7): ExamAttempt — start + submit
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/tests/{test_id}/start",
+    response_model=ExamAttemptResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def start_exam_attempt(
+    test_id: uuid.UUID,
+    db: DB,
+    user: CurrentUser,
+) -> ExamAttemptResponse:
+    """Draw questions and create an ExamAttempt (FR-1.7.1)."""
+    org_id = uuid.UUID(user.org_id) if user.org_id else uuid.UUID(int=0)
+    attempt = await exam_attempt_service.start_attempt(
+        db,
+        test_id=test_id,
+        user_id=uuid.UUID(user.user_id),
+        org_id=org_id,
+    )
+    return ExamAttemptResponse.model_validate(attempt)
+
+
+@router.post("/attempts/{attempt_id}/submit", response_model=ExamAttemptResponse)
+async def submit_exam_attempt(
+    attempt_id: uuid.UUID,
+    data: SubmitAttemptRequest,
+    db: DB,
+    user: CurrentUser,
+) -> ExamAttemptResponse:
+    """Score MCQ, create dissertation answer rows, enqueue AI grading (FR-1.7.2)."""
+    attempt = await exam_attempt_service.submit_attempt(
+        db,
+        attempt_id=attempt_id,
+        user_id=uuid.UUID(user.user_id),
+        mcq_answers=data.mcq_answers,
+        dissertation_answers=data.dissertation_answers,
+        time_taken_sec=data.time_taken_sec,
+    )
+    return ExamAttemptResponse.model_validate(attempt)
+
+
+# ---------------------------------------------------------------------------
+# E1-9 (FR-1.9): Dissertation review + human scoring
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/tests/{test_id}/dissertation-review",
+    response_model=list[DissertationAnswerResponse],
+)
+async def list_dissertation_review(
+    test_id: uuid.UUID,
+    db: DB,
+    user: TeacherUser,
+) -> list[DissertationAnswerResponse]:
+    """List dissertation answers pending teacher review (FR-1.9.1)."""
+    org_id = uuid.UUID(user.org_id) if user.org_id else uuid.UUID(int=0)
+    answers = await exam_answer_service.list_for_review(db, test_id=test_id, org_id=org_id)
+    return [DissertationAnswerResponse.model_validate(a) for a in answers]
+
+
+@router.patch("/answers/{answer_id}/human-score", response_model=DissertationAnswerResponse)
+async def apply_human_score(
+    answer_id: uuid.UUID,
+    data: HumanScoreUpdate,
+    db: DB,
+    user: TeacherUser,
+) -> DissertationAnswerResponse:
+    """Apply teacher grade to a dissertation answer (FR-1.9.2)."""
+    org_id = uuid.UUID(user.org_id) if user.org_id else uuid.UUID(int=0)
+    answer = await exam_answer_service.apply_human_score(
+        db,
+        answer_id=answer_id,
+        org_id=org_id,
+        graded_by=uuid.UUID(user.user_id),
+        human_score=data.human_score,
+        human_feedback=data.human_feedback,
+    )
+    return DissertationAnswerResponse.model_validate(answer)
