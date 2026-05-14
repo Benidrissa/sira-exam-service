@@ -264,6 +264,18 @@ class SubmitAttemptRequest(BaseModel):
     time_taken_sec: int | None = Field(None, ge=1)
 
 
+class StartAttemptResponse(BaseModel):
+    """ExamAttempt + pre-loaded questions so the player needs only one API call."""
+
+    attempt_id: uuid.UUID
+    test_id: uuid.UUID
+    user_id: uuid.UUID
+    bank_id: uuid.UUID
+    question_ids: list
+    time_limit_minutes: int | None
+    questions: list[ExamQuestionResponse]
+
+
 # ---------------------------------------------------------------------------
 # Human scoring (E1-9)
 # ---------------------------------------------------------------------------
