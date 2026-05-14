@@ -56,14 +56,9 @@ def upgrade() -> None:
         sa.Column("passing_score", sa.Float, nullable=False, server_default="80.0"),
         sa.Column(
             "status",
-            sa.Enum(
-                "draft",
-                "generating",
-                "review",
-                "published",
-                "archived",
-                name="bankstatus",
-                create_type=False,
+            postgresql.ENUM(
+                "draft", "generating", "review", "published", "archived",
+                name="bankstatus", create_type=False,
             ),
             nullable=False,
             server_default="draft",
@@ -92,13 +87,9 @@ def upgrade() -> None:
         sa.Column("char_count", sa.Integer, nullable=True),
         sa.Column(
             "extraction_status",
-            sa.Enum(
-                "pending",
-                "extracting",
-                "done",
-                "failed",
-                name="extractionstatus",
-                create_type=False,
+            postgresql.ENUM(
+                "pending", "extracting", "done", "failed",
+                name="extractionstatus", create_type=False,
             ),
             nullable=False,
             server_default="pending",
@@ -145,7 +136,7 @@ def upgrade() -> None:
         ),
         sa.Column(
             "question_type",
-            sa.Enum("mcq", "dissertation", name="questiontype", create_type=False),
+            postgresql.ENUM("mcq", "dissertation", name="questiontype", create_type=False),
             nullable=False,
             server_default="mcq",
         ),
@@ -160,7 +151,7 @@ def upgrade() -> None:
         sa.Column("rubric", postgresql.JSONB, nullable=True),
         sa.Column(
             "difficulty",
-            sa.Enum("easy", "medium", "hard", name="difficulty", create_type=False),
+            postgresql.ENUM("easy", "medium", "hard", name="difficulty", create_type=False),
             nullable=False,
             server_default="medium",
         ),
@@ -188,7 +179,7 @@ def upgrade() -> None:
         sa.Column("title", sa.Text, nullable=False),
         sa.Column(
             "mode",
-            sa.Enum("exam", "training", "review", name="testmode", create_type=False),
+            postgresql.ENUM("exam", "training", "review", name="testmode", create_type=False),
             nullable=False,
             server_default="exam",
         ),
@@ -200,7 +191,7 @@ def upgrade() -> None:
         sa.Column("dissertation_weight", sa.Float, nullable=False, server_default="1.0"),
         sa.Column(
             "status",
-            sa.Enum("draft", "published", "archived", name="teststatus", create_type=False),
+            postgresql.ENUM("draft", "published", "archived", name="teststatus", create_type=False),
             nullable=False,
             server_default="draft",
         ),
@@ -257,12 +248,9 @@ def upgrade() -> None:
         sa.Column("human_scored_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column(
             "status",
-            sa.Enum(
-                "pending",
-                "ai_scored",
-                "human_reviewed",
-                name="dissertationstatus",
-                create_type=False,
+            postgresql.ENUM(
+                "pending", "ai_scored", "human_reviewed",
+                name="dissertationstatus", create_type=False,
             ),
             nullable=False,
             server_default="pending",
