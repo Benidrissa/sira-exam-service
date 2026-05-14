@@ -28,7 +28,7 @@ services:
       - "traefik.http.routers.sira-exam-api.tls.certresolver=letsencrypt"
       - "traefik.http.services.sira-exam-api.loadbalancer.server.port=8001"
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:8001/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
