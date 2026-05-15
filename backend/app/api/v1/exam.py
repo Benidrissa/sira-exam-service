@@ -551,9 +551,7 @@ async def update_exam_test(
 
     from app.domain.models.exam import ExamTest
 
-    result = await db.execute(
-        select(ExamTest).where(ExamTest.id == test_id)
-    )
+    result = await db.execute(select(ExamTest).where(ExamTest.id == test_id))
     test = result.scalar_one_or_none()
     if not test:
         raise HTTPException(status_code=404, detail="ExamTest not found")
