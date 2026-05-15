@@ -305,16 +305,26 @@ async def _call_claude(
     context: str,
 ) -> dict:
     """Call Claude with forced save_exam tool use. Returns parsed tool input."""
-    import json
 
     from anthropic import AsyncAnthropic
 
     client = AsyncAnthropic(api_key=api_key, timeout=300.0)
 
+    total_questions = sum(s.get("question_count", 3) for s in scenarios_brief)
+    # Limit context to 60k chars (~15k tokens) so Claude has headroom to generate
+    context_excerpt = (context or "")[:60_000]
     user_msg = (
-        f"Generate an exam with the following objective: {test_objective}\n\n"
-        f"Scenarios requested:\n{json.dumps(scenarios_brief, indent=2)}\n\n"
-        f"Source material:\n{context or '(no source material provided)'}"
+        f"Generate an exam based on the source material below.\n\n"
+        f"Objective: {test_objective}\n\n"
+        f"You MUST produce EXACTLY {len(scenarios_brief)} scenarios and EXACTLY "
+        f"{total_questions} questions total distributed as follows:\n"
+        + "\n".join(
+            f"  - Scenario '{s['title']}': {s.get('question_count', 3)} questions"
+            for s in scenarios_brief
+        )
+        + f"\n\nEach scenario MUST have its questions in the top-level 'questions' array "
+        f"(use scenario_index to link them). Call the save_exam tool now.\n\n"
+        f"Source material (excerpt):\n{context_excerpt or '(no source material provided)'}"
     )
 
     response = await client.messages.create(
