@@ -109,7 +109,7 @@ async def create_test(
         id=uuid.uuid4(),
         bank_id=bank_id,
         created_by=created_by,
-        status=TestStatus.draft,
+        status=TestStatus.published,  # bank is already published, test is immediately usable
         **data.model_dump(),
     )
     db.add(test)

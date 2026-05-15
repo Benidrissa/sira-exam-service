@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 
 from celery.result import AsyncResult
-from fastapi import APIRouter, File, UploadFile, status
+from fastapi import APIRouter, File, HTTPException, UploadFile, status
 
 from app.api.deps import DB, CurrentUser, TeacherUser
 from app.domain.models.exam import BankStatus
@@ -35,6 +35,7 @@ from app.schemas.exam import (
     ExamSourceResponse,
     ExamTestCreate,
     ExamTestResponse,
+    ExamTestUpdate,
     GenerateBriefRequest,
     GenerationStatusResponse,
     HumanScoreUpdate,
@@ -536,6 +537,29 @@ async def create_exam_test(
         org_id=user.org_id,
         data=body,
     )
+
+
+@router.patch("/tests/{test_id}", response_model=ExamTestResponse)
+async def update_exam_test(
+    test_id: uuid.UUID,
+    body: ExamTestUpdate,
+    user: TeacherUser,
+    db: DB,
+) -> object:
+    """Update an ExamTest (e.g. publish, change title, toggle shuffle)."""
+    from sqlalchemy import select
+
+    from app.domain.models.exam import ExamTest
+
+    result = await db.execute(select(ExamTest).where(ExamTest.id == test_id))
+    test = result.scalar_one_or_none()
+    if not test:
+        raise HTTPException(status_code=404, detail="ExamTest not found")
+    for field, value in body.model_dump(exclude_none=True).items():
+        setattr(test, field, value)
+    await db.commit()
+    await db.refresh(test)
+    return test
 
 
 # ---------------------------------------------------------------------------
