@@ -60,6 +60,7 @@ services:
     env_file: .env
     environment:
       - NEXT_PUBLIC_DEV_LOGIN=true
+      - HOSTNAME=0.0.0.0
     networks:
       - sira-exam
       - proxy
