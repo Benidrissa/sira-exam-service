@@ -2,6 +2,7 @@ import { NextIntlClientProvider } from "next-intl";
 import { getMessages } from "next-intl/server";
 import { notFound } from "next/navigation";
 import { Providers } from "@/providers";
+import { NavBar } from "@/components/NavBar";
 
 const locales = ["fr", "en"];
 
@@ -19,7 +20,12 @@ export default async function LocaleLayout({
 
   return (
     <NextIntlClientProvider locale={locale} messages={messages}>
-      <Providers>{children}</Providers>
+      <Providers>
+        <div className="min-h-screen bg-gray-50">
+          <NavBar />
+          {children}
+        </div>
+      </Providers>
     </NextIntlClientProvider>
   );
 }
