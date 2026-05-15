@@ -8,8 +8,10 @@ import { useLockdownShell } from "@/hooks/useLockdownShell";
 import { useWebcamProctor } from "@/hooks/useWebcamProctor";
 
 export default function ExamPlayerPage() {
-  const { testId } = useParams<{ testId: string }>();
+  const { testId, locale } = useParams<{ testId: string; locale?: string }>();
+  const effectiveLocale = (locale as string) ?? "fr";
   const router = useRouter();
+  const [showConfirm, setShowConfirm] = useState(false);
   const [session, setSession] = useState<StartAttemptResponse | null>(null);
   const [mcqAnswers, setMcqAnswers] = useState<Record<string, number[]>>({});
   const [dissertations, setDissertations] = useState<Record<string, string>>({});
@@ -85,7 +87,7 @@ export default function ExamPlayerPage() {
       }
 
       setSubmitted(true);
-      router.push(`/exams/${testId}/results`);
+      router.push(`/${effectiveLocale}/exams/${testId}/results`);
     } catch (e) {
       setError(String(e));
       setSubmitting(false);
@@ -120,18 +122,63 @@ export default function ExamPlayerPage() {
   return (
     <main className="max-w-3xl mx-auto p-6 pb-24">
       {/* Sticky header */}
-      <div className="sticky top-0 z-10 flex items-center justify-between bg-white border-b py-3 mb-6">
-        <h1 className="text-lg font-semibold">Exam</h1>
-        {secondsLeft !== null && (
-          <span className={`font-mono text-xl font-bold ${timerColor}`}>{fmt(secondsLeft)}</span>
+      <div className="sticky top-0 z-10 bg-white border-b shadow-sm">
+        <div className="flex items-center justify-between py-3 gap-3">
+          <div className="flex flex-col">
+            <h1 className="text-sm font-semibold text-gray-900">Exam</h1>
+            <span className="text-xs text-gray-400">
+              {Object.keys(mcqAnswers).length + Object.keys(dissertations).filter(k => dissertations[k]).length}
+              /{session.questions.length} answered
+            </span>
+          </div>
+          {secondsLeft !== null && (
+            <span className={`font-mono text-2xl font-bold tabular-nums ${timerColor}`}>
+              {fmt(secondsLeft)}
+            </span>
+          )}
+          <button
+            disabled={submitting || submitted}
+            onClick={() => setShowConfirm(true)}
+            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50 transition-colors">
+            {submitting ? "Submitting…" : submitted ? "Submitted ✓" : "Submit"}
+          </button>
+        </div>
+        {/* Progress bar */}
+        {session.questions.length > 0 && (
+          <div className="h-0.5 bg-gray-100">
+            <div
+              className="h-0.5 bg-blue-500 transition-all"
+              style={{ width: `${Math.round((Object.keys(mcqAnswers).length + Object.keys(dissertations).filter(k => dissertations[k]).length) / session.questions.length * 100)}%` }}
+            />
+          </div>
         )}
-        <button
-          disabled={submitting || submitted}
-          onClick={handleSubmit}
-          className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
-          {submitting ? "Submitting…" : submitted ? "Submitted ✓" : "Submit"}
-        </button>
       </div>
+      <div className="mt-6" />
+
+      {/* Submit confirmation dialog */}
+      {showConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl mx-4">
+            <h2 className="text-lg font-bold text-gray-900">Submit exam?</h2>
+            <p className="mt-2 text-sm text-gray-500">
+              You have answered {Object.keys(mcqAnswers).length} of {session.questions.filter(q => q.question_type === "mcq").length} MCQ questions
+              {session.questions.some(q => q.question_type === "dissertation") && ` and ${Object.keys(dissertations).filter(k => dissertations[k]).length} of ${session.questions.filter(q => q.question_type === "dissertation").length} written questions`}.
+              This cannot be undone.
+            </p>
+            <div className="mt-5 flex gap-3">
+              <button onClick={() => setShowConfirm(false)} className="flex-1 rounded-xl border border-gray-200 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                Keep working
+              </button>
+              <button
+                onClick={() => { setShowConfirm(false); handleSubmit(); }}
+                className="flex-1 rounded-xl bg-blue-600 py-2 text-sm font-semibold text-white hover:bg-blue-700">
+                Submit now
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
 
       {session.questions.length === 0 && (
         <p className="text-center py-12 text-gray-400 text-sm">No questions available for this exam.</p>

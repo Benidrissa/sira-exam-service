@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import {
   listScenarios,
   listQuestions,
@@ -14,12 +14,15 @@ import type { ExamScenario, ExamQuestion } from "@/types/exam";
 import { useDebounce } from "@/hooks/use-debounce";
 
 export default function ReviewBoardPage() {
-  const { bankId } = useParams<{ bankId: string }>();
+  const { bankId, locale } = useParams<{ bankId: string; locale: string }>();
+  const router = useRouter();
   const [scenarios, setScenarios] = useState<ExamScenario[]>([]);
   const [questions, setQuestions] = useState<ExamQuestion[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [publishState, setPublishState] = useState<"idle" | "publishing" | "done" | "error">("idle");
+  const [testLink, setTestLink] = useState<string | null>(null);
 
   useEffect(() => {
     Promise.all([listScenarios(bankId), listQuestions(bankId)])
@@ -39,35 +42,99 @@ export default function ReviewBoardPage() {
       await validateAll(bankId);
       setPublishState("done");
       setQuestions((qs) => qs.map((q) => ({ ...q, validated: true })));
+      // Fetch or create a test and show the student link
+      try {
+        const API = process.env.NEXT_PUBLIC_EXAM_API_URL ?? "http://localhost:8001/api/v1";
+        let tests = await (await fetch(`${API}/exam/banks/${bankId}/tests`, { credentials: "include" })).json();
+        if (!tests.length) {
+          // Auto-create a test
+          const res = await fetch(`${API}/exam/banks/${bankId}/tests`, {
+            method: "POST", credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ title: "Exam", time_limit_minutes: 60, shuffle_questions: true }),
+          });
+          tests = [await res.json()];
+        }
+        if (tests[0]?.id) {
+          setTestLink(`${window.location.origin}/${locale}/exams/${tests[0].id}/play`);
+        }
+      } catch { /* ignore — bank is published even if test link fetch fails */ }
     } catch (e) {
       setError(String(e));
       setPublishState("error");
     }
   }
 
-  if (loading) return <p className="p-8 text-sm text-gray-500">Loading…</p>;
-  if (error) return <p className="p-8 text-sm text-red-600">{error}</p>;
+  if (loading) return (
+    <main className="max-w-3xl mx-auto p-8">
+      <div className="space-y-4">
+        {[1,2,3].map(i => <div key={i} className="h-32 animate-pulse rounded-xl bg-gray-100" />)}
+      </div>
+    </main>
+  );
+  if (error) return (
+    <main className="max-w-3xl mx-auto p-8">
+      <div className="rounded-xl border border-red-200 bg-red-50 p-6">
+        <p className="font-medium text-red-700">Failed to load</p>
+        <p className="mt-1 text-sm text-red-500">{error}</p>
+        <button onClick={() => router.back()} className="mt-3 text-sm text-red-600 underline">Go back</button>
+      </div>
+    </main>
+  );
 
-  const allValidated = questions.every((q) => q.validated);
+  const allValidated = questions.length > 0 && questions.every((q) => q.validated);
 
   return (
-    <main className="max-w-3xl mx-auto p-8 space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Review &amp; Edit Board</h1>
-        <button
-          disabled={publishState !== "idle" || allValidated}
-          onClick={handleValidateAll}
-          className="rounded bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50">
-          {publishState === "publishing" ? "Publishing…" :
-           publishState === "done" ? "✓ Published" :
-           allValidated ? "✓ All validated" : "Validate All & Publish"}
-        </button>
+    <main className="max-w-3xl mx-auto p-6 pb-12 space-y-5">
+      {/* Header */}
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-bold text-gray-900">Review &amp; Edit</h1>
+          <p className="text-xs text-gray-400 mt-0.5">{questions.length} questions · {scenarios.length} scenarios</p>
+        </div>
+        <div className="flex items-center gap-2">
+          {saveError && <span className="text-xs text-red-500">{saveError}</span>}
+          {publishState === "done" ? (
+            <span className="rounded-lg bg-green-50 border border-green-200 px-3 py-1.5 text-sm font-medium text-green-700">✓ Published</span>
+          ) : (
+            <button
+              disabled={publishState === "publishing" || questions.length === 0}
+              onClick={handleValidateAll}
+              className="rounded-lg bg-green-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50 transition-colors">
+              {publishState === "publishing" ? "Publishing…" : allValidated ? "Publish Bank" : "Validate All & Publish"}
+            </button>
+          )}
+        </div>
       </div>
+
+      {/* Test link shown after publish */}
+      {testLink && (
+        <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+          <p className="text-sm font-semibold text-blue-800 mb-2">✓ Bank published! Share this link with students:</p>
+          <div className="flex items-center gap-2">
+            <code className="flex-1 rounded bg-white border border-blue-200 px-3 py-1.5 text-xs text-blue-700 truncate">{testLink}</code>
+            <button
+              onClick={async () => { await navigator.clipboard.writeText(testLink); }}
+              className="shrink-0 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
+            >
+              Copy
+            </button>
+          </div>
+        </div>
+      )}
+
+      {questions.length === 0 && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700">
+          No questions generated yet. Go back and trigger generation first.
+        </div>
+      )}
+
 
       {scenarios.map((scenario) => (
         <ScenarioCard
           key={scenario.id}
           bankId={bankId}
+          onSaveError={(msg) => { setSaveError(msg); setTimeout(() => setSaveError(null), 3000); }}
           scenario={scenario}
           questions={questionsByScenario(scenario.id)}
           onQuestionUpdate={(updated) =>
@@ -82,11 +149,12 @@ export default function ReviewBoardPage() {
   );
 }
 
-function ScenarioCard({ bankId, scenario, questions, onQuestionUpdate }: {
+function ScenarioCard({ bankId, scenario, questions, onQuestionUpdate, onSaveError }: {
   bankId: string;
   scenario: ExamScenario;
   questions: ExamQuestion[];
   onQuestionUpdate: (q: ExamQuestion) => void;
+  onSaveError: (msg: string) => void;
 }) {
   const [title, setTitle] = useState(scenario.title);
   const [saving, setSaving] = useState(false);
@@ -95,7 +163,7 @@ function ScenarioCard({ bankId, scenario, questions, onQuestionUpdate }: {
     useCallback(async (val: string) => {
       setSaving(true);
       try { await patchScenario(bankId, scenario.id, { title: val }); }
-      catch { /* silent */ }
+      catch (e) { onSaveError(`Failed to save scenario: ${e instanceof Error ? e.message : String(e)}`); }
       finally { setSaving(false); }
     }, [bankId, scenario.id]),
     600,
@@ -117,7 +185,7 @@ function ScenarioCard({ bankId, scenario, questions, onQuestionUpdate }: {
       </div>
       <div className="divide-y">
         {questions.map((q) => (
-          <QuestionCard key={q.id} bankId={bankId} question={q} onUpdate={onQuestionUpdate} />
+          <QuestionCard key={q.id} bankId={bankId} question={q} onUpdate={onQuestionUpdate} onSaveError={onSaveError} />
         ))}
       </div>
       {questions.length === 0 && (
@@ -127,10 +195,11 @@ function ScenarioCard({ bankId, scenario, questions, onQuestionUpdate }: {
   );
 }
 
-function QuestionCard({ bankId, question, onUpdate }: {
+function QuestionCard({ bankId, question, onUpdate, onSaveError }: {
   bankId: string;
   question: ExamQuestion;
   onUpdate: (q: ExamQuestion) => void;
+  onSaveError: (msg: string) => void;
 }) {
   const [description, setDescription] = useState(question.description);
   const [saving, setSaving] = useState(false);
@@ -142,9 +211,10 @@ function QuestionCard({ bankId, question, onUpdate }: {
       try {
         const updated = await patchQuestion(question.id, bankId, { description: val });
         onUpdate(updated);
-      } catch { /* silent */ }
-      finally { setSaving(false); }
-    }, [question.id, bankId, onUpdate]),
+      } catch (e) {
+        onSaveError(`Failed to save question: ${e instanceof Error ? e.message : String(e)}`);
+      } finally { setSaving(false); }
+    }, [question.id, bankId, onUpdate, onSaveError]),
     600,
   );
 
@@ -153,8 +223,9 @@ function QuestionCard({ bankId, question, onUpdate }: {
     try {
       const updated = await validateQuestion(question.id, bankId);
       onUpdate(updated);
-    } catch { /* silent */ }
-    finally { setValidating(false); }
+    } catch (e) {
+      onSaveError(`Failed to validate: ${e instanceof Error ? e.message : String(e)}`);
+    } finally { setValidating(false); }
   }
 
   return (
