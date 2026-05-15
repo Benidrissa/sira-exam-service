@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const PUBLIC_PATHS = ["/api/", "/_next/", "/favicon.ico", "/login"];
+const DEFAULT_LOCALE = "fr";
+const PUBLIC_PATHS = ["/api/", "/_next/", "/favicon.ico", "/login", `/${DEFAULT_LOCALE}/login`];
 
 export function middleware(request: NextRequest): NextResponse {
   const { pathname } = request.nextUrl;
@@ -14,7 +15,7 @@ export function middleware(request: NextRequest): NextResponse {
     request.headers.get("Authorization")?.replace("Bearer ", "");
 
   if (!token) {
-    const loginUrl = new URL("/login", request.url);
+    const loginUrl = new URL(`/${DEFAULT_LOCALE}/login`, request.url);
     loginUrl.searchParams.set("redirect", pathname);
     return NextResponse.redirect(loginUrl);
   }
