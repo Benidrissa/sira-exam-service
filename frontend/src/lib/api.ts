@@ -16,6 +16,16 @@ import type {
 const API_BASE =
   process.env.NEXT_PUBLIC_EXAM_API_URL || "http://localhost:8001/api/v1";
 
+// The access_token cookie is set on the frontend domain.
+// The API is on a different subdomain so the browser won't auto-send it.
+// We read it from document.cookie and pass it as an Authorization header.
+function getAuthHeader(): Record<string, string> {
+  if (typeof document === "undefined") return {};
+  const match = document.cookie.match(/(?:^|; )access_token=([^;]*)/);
+  if (!match) return {};
+  return { Authorization: `Bearer ${decodeURIComponent(match[1])}` };
+}
+
 export async function apiFetch<T>(
   path: string,
   options: RequestInit = {},
@@ -24,6 +34,7 @@ export async function apiFetch<T>(
     ...options,
     headers: {
       "Content-Type": "application/json",
+      ...getAuthHeader(),
       ...(options.headers ?? {}),
     },
     credentials: "include",
@@ -42,6 +53,7 @@ async function apiUpload<T>(path: string, form: FormData): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     method: "POST",
     body: form,
+    headers: getAuthHeader(),
     credentials: "include",
   });
   if (!res.ok) {
