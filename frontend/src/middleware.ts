@@ -1,13 +1,25 @@
-import { NextRequest, NextResponse } from "next/server";
+import createIntlMiddleware from "next-intl/middleware";
+import { type NextRequest, NextResponse } from "next/server";
 
 const DEFAULT_LOCALE = "fr";
-const PUBLIC_PATHS = ["/api/", "/_next/", "/favicon.ico", "/login", `/${DEFAULT_LOCALE}/login`];
+const LOCALES = ["fr", "en"] as const;
+const AUTH_FREE = ["/login", "/fr/login", "/en/login"];
+
+const intlMiddleware = createIntlMiddleware({
+  locales: LOCALES,
+  defaultLocale: DEFAULT_LOCALE,
+});
 
 export function middleware(request: NextRequest): NextResponse {
   const { pathname } = request.nextUrl;
 
-  if (PUBLIC_PATHS.some((p) => pathname.startsWith(p))) {
-    return NextResponse.next();
+  // Skip auth for static assets and login pages
+  if (
+    pathname.startsWith("/api/") ||
+    pathname.startsWith("/_next/") ||
+    AUTH_FREE.some((p) => pathname === p || pathname.startsWith(p + "?"))
+  ) {
+    return intlMiddleware(request);
   }
 
   const token =
@@ -20,7 +32,7 @@ export function middleware(request: NextRequest): NextResponse {
     return NextResponse.redirect(loginUrl);
   }
 
-  return NextResponse.next();
+  return intlMiddleware(request);
 }
 
 export const config = {
