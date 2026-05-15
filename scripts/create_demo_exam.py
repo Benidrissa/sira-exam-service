@@ -86,7 +86,7 @@ def main() -> None:
             "    Make sure the backend is deployed with DEBUG=true."
         )
     teacher_token = r.json()["access_token"]
-    ok(f"teacher_token obtained (role=expert)")
+    ok("teacher_token obtained (role=expert)")
 
     # ── 2. Get student token ───────────────────────────────────────────────
     r = requests.get(f"{STAGING_API}/dev/tokens?role=user", timeout=15)
@@ -168,7 +168,9 @@ def main() -> None:
     )
     r.raise_for_status()
     result = r.json()
-    ok(f"validated {result.get('validated_count')} questions  bank_status={result.get('bank_status')}")
+    count = result.get("validated_count")
+    bstatus = result.get("bank_status")
+    ok(f"validated {count} questions  bank_status={bstatus}")
 
     # ── 9. Create ExamTest ─────────────────────────────────────────────────
     step("8/8  Creating ExamTest (30 min timer, shuffle on)")
@@ -186,7 +188,15 @@ def main() -> None:
     r.raise_for_status()
     test = r.json()
     test_id = test["id"]
-    ok(f"test_id = {test_id}")
+    # Tests are auto-published from published banks (status should already be published)
+    # Belt-and-suspenders: PATCH to ensure published
+    requests.patch(
+        f"{STAGING_API}/exam/tests/{test_id}",
+        json={"status": "published"},
+        headers=_headers(teacher_token),
+        timeout=10,
+    )
+    ok(f"test_id = {test_id}  status=published")
 
     # ── Summary ────────────────────────────────────────────────────────────
     frontend = "https://sira-exam.elearning.portfolio2.kimbetien.com"
