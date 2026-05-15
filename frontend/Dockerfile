@@ -7,6 +7,9 @@ RUN npm ci
 COPY . .
 
 FROM base AS builder
+# Bake NEXT_PUBLIC_* vars at build time (they cannot be set at runtime)
+ARG NEXT_PUBLIC_EXAM_API_URL=http://localhost:8001/api/v1
+ENV NEXT_PUBLIC_EXAM_API_URL=$NEXT_PUBLIC_EXAM_API_URL
 RUN npm run build
 
 FROM node:22-alpine AS runner

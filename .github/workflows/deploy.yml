@@ -57,6 +57,8 @@ jobs:
         with:
           context: ./frontend
           push: true
+          build-args: |
+            NEXT_PUBLIC_EXAM_API_URL=https://sira-exam-api.elearning.portfolio2.kimbetien.com/api/v1
           tags: |
             ghcr.io/${{ steps.meta.outputs.owner }}/sira-exam-service/exam-frontend:${{ steps.meta.outputs.sha }}
             ghcr.io/${{ steps.meta.outputs.owner }}/sira-exam-service/exam-frontend:latest

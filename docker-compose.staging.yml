@@ -18,6 +18,7 @@ services:
     env_file: .env
     environment:
       - DEBUG=true
+      - FRONTEND_URL=https://sira-exam.elearning.portfolio2.kimbetien.com
     networks:
       - sira-exam
       - proxy
