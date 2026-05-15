@@ -518,6 +518,17 @@ async def validate_all_questions(
 # ---------------------------------------------------------------------------
 
 
+@router.get("/banks/{bank_id}/tests", response_model=list[ExamTestResponse])
+async def list_exam_tests(bank_id: uuid.UUID, user: TeacherUser, db: DB) -> list:
+    """List all tests for an exam bank."""
+    from sqlalchemy import select
+
+    from app.domain.models.exam import ExamTest
+
+    result = await db.execute(select(ExamTest).where(ExamTest.bank_id == bank_id))
+    return result.scalars().all()
+
+
 @router.post(
     "/banks/{bank_id}/tests",
     response_model=ExamTestResponse,
