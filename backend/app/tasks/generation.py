@@ -145,7 +145,8 @@ async def _run_generation(
                 select(ExamSource).where(ExamSource.bank_id == uuid.UUID(bank_id))
             )
             sources = sources_result.scalars().all()
-            context = "\n\n---\n\n".join(s.raw_text for s in sources if s.raw_text)[:8000]
+            budget = settings.source_context_budget_chars
+            context = "\n\n---\n\n".join(s.raw_text for s in sources if s.raw_text)[:budget]
 
             exam_data = await _call_claude(
                 settings.exam_anthropic_api_key,
@@ -249,7 +250,7 @@ async def _run_regeneration(
             )
             context = "\n\n---\n\n".join(
                 s.raw_text for s in sources_result.scalars().all() if s.raw_text
-            )[:8000]
+            )[: settings.source_context_budget_chars]
 
             scenarios_brief = [{"title": scenario.title, "objective": scenario.objective or ""}]
             exam_data = await _call_claude(
