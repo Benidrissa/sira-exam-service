@@ -55,8 +55,8 @@ export default function LoginPage() {
       if (!res.ok) throw new Error(`Server returned ${res.status} — is the backend running with DEBUG=true?`);
       const data = await res.json();
       document.cookie = `access_token=${data.access_token}; path=/; SameSite=Lax; max-age=86400`;
-      const isLoginPage = redirect === "/login" || redirect === "/fr/login" || redirect === "/fr/" || redirect === "/";
-      router.push(isLoginPage ? "/fr/" : redirect);
+      const isLoginPage = !redirect || redirect.includes("/login") || redirect === "/" || redirect.match(/^\/[a-z]{2}\/?$/);
+      router.push(isLoginPage ? `/${role === "user" ? "fr" : "fr"}/` : redirect);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {

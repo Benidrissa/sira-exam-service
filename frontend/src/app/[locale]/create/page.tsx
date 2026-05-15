@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import {
   createExamBank,
   uploadExamSource,
@@ -15,6 +15,8 @@ type Step = 0 | 1 | 2 | 3;
 
 export default function CreateExamPage() {
   const router = useRouter();
+  const params = useParams<{ locale?: string }>();
+  const locale = params?.locale ?? "fr";
   const [step, setStep] = useState<Step>(0);
   const [bankId, setBankId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -100,7 +102,7 @@ export default function CreateExamPage() {
         if (s.status === "review") {
           setPolling(false);
           setGenStatus("Done! Redirecting to review board…");
-          setTimeout(() => router.push(`/banks/${bId}/review`), 1500);
+          setTimeout(() => router.push(`/${locale}/banks/${bId}/review`), 1500);
           return;
         }
         if (s.status === "draft" && s.error_message) {
