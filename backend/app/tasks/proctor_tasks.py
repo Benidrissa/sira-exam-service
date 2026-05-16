@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import hashlib
 import json
 import uuid as _uuid_module
 from datetime import UTC, datetime, timedelta
@@ -154,6 +155,34 @@ async def _analyze_snapshot_async(snapshot_id: str) -> dict:  # type: ignore[typ
         storage = get_exam_storage()
         image_bytes = await storage.download(snap.storage_key)
         image_b64 = base64.b64encode(image_bytes).decode()
+
+        # E3-9: SHA-256 integrity check
+        if snap.frame_sha256 is not None:
+            actual_sha256 = hashlib.sha256(image_bytes).hexdigest()
+            if actual_sha256 != snap.frame_sha256:
+                logger.warning(
+                    "snapshot_integrity_failure",
+                    snapshot_id=snapshot_id,
+                    expected=snap.frame_sha256,
+                    actual=actual_sha256,
+                )
+                snap.integrity_check_passed = False
+                snap.integrity_failure_reason = "sha256_mismatch"
+                snap.analysis_status = SnapshotAnalysis.error
+                event = ProctorEvent(
+                    id=_uuid_module.uuid4(),
+                    session_id=snap.session_id,
+                    event_type="integrity_check_failed",
+                    severity=EventSeverity.medium,
+                    payload={
+                        "expected_sha256": snap.frame_sha256,
+                        "actual_sha256": actual_sha256,
+                    },
+                )
+                db.add(event)
+                await db.commit()
+                return {"error": "integrity_check_failed", "snapshot_id": snapshot_id}
+            snap.integrity_check_passed = True
 
         # Claude Vision — forced tool use
         client = Anthropic(api_key=settings.exam_anthropic_api_key or None)

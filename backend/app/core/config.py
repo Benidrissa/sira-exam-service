@@ -49,6 +49,13 @@ class Settings(BaseSettings):
     enable_proctor_vision: bool = True
     debug: bool = False
 
+    # Edge AI (E3-9)
+    edge_ai_enabled: bool = False
+    edge_sha256_verification: bool = True
+    edge_skip_cloud_if_processed: bool = True
+    celery_high_queue: str = "sira_exam_high"
+    celery_low_queue: str = "sira_exam_low"
+
     # Sentry (optional)
     sentry_dsn: str = ""
 

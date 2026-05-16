@@ -17,7 +17,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     env_file: .env
-    command: celery -A app.tasks.celery_app worker --loglevel=info --concurrency=4
+    command: celery -A app.tasks.celery_app worker --loglevel=info --concurrency=4 -Q sira_exam_high,sira_exam,sira_exam_low
     volumes:
       - ./backend:/app
 
