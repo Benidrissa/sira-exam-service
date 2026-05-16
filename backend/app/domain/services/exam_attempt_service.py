@@ -48,6 +48,20 @@ async def start_attempt(
             detail="ExamTest is not published.",
         )
 
+    # Guard: student may not start a second attempt once one is submitted (FR-1.7 AC4)
+    existing = await db.execute(
+        select(ExamAttempt).where(
+            ExamAttempt.test_id == test_id,
+            ExamAttempt.user_id == user_id,
+            ExamAttempt.mcq_answers.isnot(None),
+        )
+    )
+    if existing.scalar_one_or_none() is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Attempt already submitted.",
+        )
+
     # Fetch all validated questions in the bank
     q_result = await db.execute(
         select(ExamQuestion).where(
