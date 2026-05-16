@@ -6,6 +6,10 @@ import { startAttempt, submitAttempt, startProctoringSession, terminateSession }
 import type { ExamQuestion, StartAttemptResponse } from "@/types/exam";
 import { useLockdownShell } from "@/hooks/useLockdownShell";
 import { useWebcamProctor } from "@/hooks/useWebcamProctor";
+import { useConnectivityProbe } from "@/hooks/useConnectivityProbe";
+import { OfflineBanner } from "@/components/OfflineBanner";
+import { openOfflineDb } from "@/lib/offlineDb";
+import { drain } from "@/lib/offlineSync";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -35,6 +39,12 @@ export default function ExamPlayerPage() {
   const [proctoringToken, setProctoringToken] = useState<string | null>(null);
   const [isRemoteExam, setIsRemoteExam] = useState(false);
   const [snapshotIntervalMs, setSnapshotIntervalMs] = useState(10_000);
+  const [offlineDb, setOfflineDb] = useState<IDBDatabase | null>(null);
+
+  // Initialize IndexedDB
+  useEffect(() => {
+    openOfflineDb().then(setOfflineDb).catch(console.error);
+  }, []);
 
   // Restore proctoring session across hard reloads (React state is not persistent)
   useEffect(() => {
@@ -61,6 +71,17 @@ export default function ExamPlayerPage() {
     router.push(`/${effectiveLocale}/exams/${testId}/results?reason=lockdown_violation`);
   }, [proctoringSessionId, router, testId, effectiveLocale]);
 
+  const handleDrain = useCallback(async () => {
+    if (!proctoringSessionId || !proctoringToken || !offlineDb) return;
+    await drain(proctoringSessionId, proctoringToken, offlineDb);
+  }, [proctoringSessionId, proctoringToken, offlineDb]);
+
+  const { connectivityState, offlineDurationSeconds, sessionExpired } = useConnectivityProbe(
+    proctoringSessionId,
+    proctoringToken,
+    handleDrain,
+  );
+
   // Lockdown shell — enabled only for remote exams
   const { fullscreenActive, fullscreenCountdown, violationCount } = useLockdownShell(
     isRemoteExam,
@@ -75,6 +96,8 @@ export default function ExamPlayerPage() {
     proctoringToken,
     isRemoteExam,
     snapshotIntervalMs,
+    connectivityState,
+    offlineDb,
   );
 
   useEffect(() => {
@@ -186,6 +209,8 @@ export default function ExamPlayerPage() {
 
   return (
     <main className="max-w-3xl mx-auto pb-24">
+      <OfflineBanner state={connectivityState} offlineDurationSeconds={offlineDurationSeconds} />
+
       {/* Sticky header */}
       <div className="sticky top-0 z-10 bg-background/95 backdrop-blur shadow-sm border-b">
         <div className="flex items-center justify-between px-6 py-3 gap-4">
@@ -207,7 +232,7 @@ export default function ExamPlayerPage() {
 
           {/* Right: submit button */}
           <Button
-            disabled={submitting || submitted}
+            disabled={submitting || submitted || connectivityState === "DRAINING"}
             onClick={() => setShowConfirm(true)}
           >
             {submitting ? (
@@ -303,6 +328,18 @@ export default function ExamPlayerPage() {
           </>
         )}
       </div>
+
+      {/* Session expired modal */}
+      {sessionExpired && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-background rounded-lg p-6 max-w-sm text-center space-y-3">
+            <p className="font-semibold text-destructive">Session Expired</p>
+            <p className="text-sm text-muted-foreground">
+              Your exam session expired during the network outage. Please contact your instructor.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Webcam proctoring badge */}
       {isRemoteExam && proctoringSessionId && (

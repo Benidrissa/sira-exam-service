@@ -8,6 +8,8 @@ export function useWebcamProctor(
   sessionToken: string | null,
   enabled: boolean,
   intervalMs: number = 10_000,
+  connectivityState?: import("@/hooks/useConnectivityProbe").ConnectivityState,
+  offlineDb?: IDBDatabase | null,
 ) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -15,6 +17,13 @@ export function useWebcamProctor(
   // Start/stop webcam stream
   useEffect(() => {
     if (!enabled || !sessionId || !sessionToken) return;
+
+    if (sessionToken) {
+      sessionStorage.setItem("proctor_session_token", sessionToken);
+    }
+    if (sessionId) {
+      sessionStorage.setItem("proctor_session_id", sessionId);
+    }
 
     navigator.mediaDevices
       .getUserMedia({ video: true, audio: false })
@@ -43,6 +52,25 @@ export function useWebcamProctor(
       canvas.height = video.videoHeight;
       canvas.getContext("2d")?.drawImage(video, 0, 0);
 
+      // If offline, write to IndexedDB instead of uploading
+      if (connectivityState && connectivityState !== "ONLINE" && offlineDb) {
+        const { putOfflineFrame } = await import("@/lib/offlineDb");
+        canvas.toBlob(async (blob) => {
+          if (!blob) return;
+          await putOfflineFrame(offlineDb, {
+            snapshot_id: crypto.randomUUID(),
+            session_id: sessionId!,
+            captured_at: Date.now(),
+            blob,
+            edge_classification: "unknown",
+            edge_confidence: 0,
+            upload_attempts: 0,
+            uploaded: false,
+          });
+        }, "image/jpeg", 0.8);
+        return; // skip normal upload
+      }
+
       canvas.toBlob(
         async (blob) => {
           if (!blob) return;
@@ -69,7 +97,7 @@ export function useWebcamProctor(
 
     const snapshotInterval = setInterval(captureSnapshot, intervalMs);
     return () => clearInterval(snapshotInterval);
-  }, [enabled, sessionId, sessionToken, intervalMs]);
+  }, [enabled, sessionId, sessionToken, intervalMs, connectivityState, offlineDb]);
 
   // Heartbeat loop (every 30s — keepalive fetch so headers can be set; sendBeacon cannot)
   useEffect(() => {
