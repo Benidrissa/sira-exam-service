@@ -16,10 +16,31 @@ from app.domain.models.proctor import (
     EventSeverity,
     ExamSession,
     ProctorAlert,
+    ProctorEvent,
     SessionStatus,
 )
 
 logger = structlog.get_logger(__name__)
+
+# ---------------------------------------------------------------------------
+# Alert thresholds — (count_threshold, alert_severity, message_template)
+# ---------------------------------------------------------------------------
+
+ALERT_THRESHOLDS: dict[str, tuple[int, EventSeverity, str]] = {
+    # fmt: off
+    "tab_switch":                 (3,  EventSeverity.medium,   "Tab switch threshold reached ({count}x)"),  # noqa: E501
+    "window_blur":                (5,  EventSeverity.low,      "Window focus lost threshold reached ({count}x)"),  # noqa: E501
+    "fullscreen_exit":            (2,  EventSeverity.medium,   "Fullscreen exited {count}x during exam"),  # noqa: E501
+    "clipboard_access":           (3,  EventSeverity.medium,   "Clipboard access threshold reached ({count}x)"),  # noqa: E501
+    "keyboard_shortcut_blocked": (10,  EventSeverity.low,      "Keyboard shortcuts blocked {count}x"),  # noqa: E501
+    "screen_capture_attempt":     (1,  EventSeverity.critical, "Screen capture attempted"),
+    "devtools_opened":            (1,  EventSeverity.high,     "DevTools opened during exam"),
+    "browser_extension_detected": (1,  EventSeverity.high,     "Browser extension detected"),
+    "copy_paste_blocked":         (5,  EventSeverity.low,      "Copy/paste blocked {count}x"),
+    "context_menu_blocked":      (10,  EventSeverity.info,     "Context menu blocked {count}x"),
+    "extended_display_detected":  (1,  EventSeverity.medium,   "Extended display detected"),
+    # fmt: on
+}
 
 
 # ---------------------------------------------------------------------------
@@ -144,6 +165,51 @@ async def create_alert(
     await db.commit()
     await db.refresh(alert)
     return alert
+
+
+async def record_event(
+    db: AsyncSession,
+    *,
+    session_id: uuid.UUID,
+    event_type: str,
+    severity: EventSeverity,
+    payload: dict | None = None,
+    occurred_at: datetime | None = None,
+) -> tuple[ProctorEvent, ProctorAlert | None]:
+    """Persist a lockdown integrity event and conditionally raise an alert (FR-3.3)."""
+    from sqlalchemy import func
+
+    event = ProctorEvent(
+        id=uuid.uuid4(),
+        session_id=session_id,
+        event_type=event_type,
+        severity=severity,
+        payload=payload,
+        occurred_at=occurred_at or datetime.now(UTC),
+    )
+    db.add(event)
+    await db.commit()
+    await db.refresh(event)
+
+    alert: ProctorAlert | None = None
+    if event_type in ALERT_THRESHOLDS:
+        threshold, alert_sev, msg_template = ALERT_THRESHOLDS[event_type]
+        count = await db.scalar(
+            select(func.count(ProctorEvent.id)).where(
+                ProctorEvent.session_id == session_id,
+                ProctorEvent.event_type == event_type,
+            )
+        ) or 1
+        if count >= threshold and (count == threshold or count % threshold == 0):
+            alert = await create_alert(
+                db,
+                session_id=session_id,
+                severity=alert_sev,
+                message=msg_template.format(count=count),
+            )
+
+    logger.info("event_recorded", session_id=str(session_id), event_type=event_type)
+    return event, alert
 
 
 # ---------------------------------------------------------------------------

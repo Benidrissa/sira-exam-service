@@ -20,6 +20,10 @@ from app.schemas.proctor import (
     ConsentResponse,
     ExamSessionResponse,
     HeartbeatResponse,
+    ProctoringEventBatchRequest,
+    ProctoringEventBatchResponse,
+    ProctoringEventRequest,
+    ProctoringEventResponse,
     ReferenceFrameRecordedRequest,
     ReferenceFrameRecordedResponse,
     ReferenceFrameUploadUrlResponse,
@@ -91,6 +95,7 @@ async def start_session(
         session_id=session.id,
         session_token=raw_token,
         expires_in=7200,
+        snapshot_interval_ms=session.snapshot_interval_ms,
     )
 
 
@@ -309,3 +314,96 @@ async def terminate_session(
         db, session_id=session_id, reason=body.reason
     )
     return ExamSessionResponse.model_validate(updated)
+
+
+# ---------------------------------------------------------------------------
+# E3-3: Lockdown events — single
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/sessions/{session_id}/events",
+    response_model=ProctoringEventResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def record_session_event(
+    session_id: uuid.UUID,
+    body: ProctoringEventRequest,
+    db: DB,
+    user: CurrentUser,
+    x_session_token: str = Header(..., alias="X-Session-Token"),
+) -> ProctoringEventResponse:
+    """Record a single lockdown integrity event (FR-3.3)."""
+    matched = await proctor_session_service.verify_session_token(db, raw_token=x_session_token)
+    if matched is None or matched.id != session_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired session token.",
+        )
+    session = await _get_session_or_404(db, session_id, _org(user))
+    if session.status != SessionStatus.active:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Session is not active (status={session.status.value}).",
+        )
+
+    event, _ = await proctor_session_service.record_event(
+        db,
+        session_id=session_id,
+        event_type=body.event_type,
+        severity=body.severity,
+        payload=body.payload,
+        occurred_at=body.occurred_at,
+    )
+    return ProctoringEventResponse.model_validate(event)
+
+
+# ---------------------------------------------------------------------------
+# E3-3: Lockdown events — batch
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/sessions/{session_id}/events/batch",
+    response_model=ProctoringEventBatchResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def record_session_events_batch(
+    session_id: uuid.UUID,
+    body: ProctoringEventBatchRequest,
+    db: DB,
+    user: CurrentUser,
+    x_session_token: str = Header(..., alias="X-Session-Token"),
+) -> ProctoringEventBatchResponse:
+    """Record a batch of lockdown integrity events — max 50 per call (FR-3.3)."""
+    if len(body.events) > 50:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Batch may not exceed 50 events.",
+        )
+    matched = await proctor_session_service.verify_session_token(db, raw_token=x_session_token)
+    if matched is None or matched.id != session_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired session token.",
+        )
+    session = await _get_session_or_404(db, session_id, _org(user))
+    if session.status != SessionStatus.active:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Session is not active (status={session.status.value}).",
+        )
+
+    event_ids: list[uuid.UUID] = []
+    for ev in body.events:
+        event, _ = await proctor_session_service.record_event(
+            db,
+            session_id=session_id,
+            event_type=ev.event_type,
+            severity=ev.severity,
+            payload=ev.payload,
+            occurred_at=ev.occurred_at,
+        )
+        event_ids.append(event.id)
+
+    return ProctoringEventBatchResponse(recorded=len(event_ids), event_ids=event_ids)
