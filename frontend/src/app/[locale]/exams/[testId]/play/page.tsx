@@ -2,10 +2,11 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { startAttempt, submitAttempt, startProctoringSession, terminateSession } from "@/lib/api";
-import type { ExamQuestion, StartAttemptResponse } from "@/types/exam";
+import { startAttempt, submitAttempt, startProctoringSession, terminateSession, getVLMConfig } from "@/lib/api";
+import type { ExamQuestion, StartAttemptResponse, VLMConfigResponse } from "@/types/exam";
 import { useLockdownShell } from "@/hooks/useLockdownShell";
 import { useWebcamProctor } from "@/hooks/useWebcamProctor";
+import { useEdgeProctor } from "@/hooks/useEdgeProctor";
 import { useConnectivityProbe } from "@/hooks/useConnectivityProbe";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { openOfflineDb } from "@/lib/offlineDb";
@@ -40,10 +41,26 @@ export default function ExamPlayerPage() {
   const [isRemoteExam, setIsRemoteExam] = useState(false);
   const [snapshotIntervalMs, setSnapshotIntervalMs] = useState(10_000);
   const [offlineDb, setOfflineDb] = useState<IDBDatabase | null>(null);
+  const [vlmConfig, setVlmConfig] = useState<VLMConfigResponse | null>(null);
+  // aiTier is written to sessionStorage during pre-check (E3-12); read once on mount
+  const aiTier = (
+    typeof sessionStorage !== "undefined"
+      ? parseInt(sessionStorage.getItem("proctor_ai_tier") ?? "0", 10)
+      : 0
+  ) as 0 | 1 | 2;
 
   // Initialize IndexedDB
   useEffect(() => {
     openOfflineDb().then(setOfflineDb).catch(console.error);
+  }, []);
+
+  // Fetch VLM config when edge AI is required (aiTier > 0)
+  useEffect(() => {
+    if (aiTier > 0) {
+      getVLMConfig().then(setVlmConfig).catch(console.error);
+    }
+  // aiTier is a constant derived from sessionStorage — no reactive deps needed
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Restore proctoring session across hard reloads (React state is not persistent)
@@ -91,14 +108,29 @@ export default function ExamPlayerPage() {
   );
 
   // Webcam proctoring — enabled only for remote exams
-  const { videoRef } = useWebcamProctor(
+  const { videoRef, registerEdgeResult } = useWebcamProctor(
     proctoringSessionId,
     proctoringToken,
     isRemoteExam,
     snapshotIntervalMs,
     connectivityState,
     offlineDb,
+    aiTier,
+    vlmConfig,
   );
+
+  // Edge AI worker — only active when aiTier > 0 and vlmConfig is loaded
+  const MEDIAPIPE_WASM = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/wasm";
+  useEdgeProctor({
+    enabled: isRemoteExam && aiTier > 0 && vlmConfig !== null,
+    mediapipeWasmUrl: MEDIAPIPE_WASM,
+    taskModelUrl: vlmConfig?.tier1_models[0]?.url ?? "",
+    onnxModelUrl: vlmConfig?.tier1_models[1]?.url ?? "",
+    modelVersion: vlmConfig?.model_version ?? "",
+    onReady: () => console.log("[EdgeProctor] worker ready"),
+    onUnsupported: (reason) => console.warn("[EdgeProctor] unsupported:", reason),
+    onResult: (result) => registerEdgeResult(result.snapshotId, result),
+  });
 
   useEffect(() => {
     startAttempt(testId)

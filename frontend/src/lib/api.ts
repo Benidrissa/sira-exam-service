@@ -236,10 +236,24 @@ export async function recordSnapshot(
   sessionId: string,
   snapshotId: string,
   storageKey: string,
+  edgeMeta?: {
+    frame_sha256?: string;
+    frame_sequence_number?: number;
+    edge_verdict?: string;
+    edge_confidence?: number;
+    edge_violation_type?: string;
+    edge_model_version?: string;
+    is_offline_frame?: boolean;
+    edge_processed?: boolean;
+  },
 ): Promise<void> {
   await apiFetch<unknown>(`/proctor/sessions/${sessionId}/snapshot-recorded`, {
     method: "POST",
-    body: JSON.stringify({ snapshot_id: snapshotId, storage_key: storageKey }),
+    body: JSON.stringify({
+      snapshot_id: snapshotId,
+      storage_key: storageKey,
+      ...edgeMeta,
+    }),
   });
 }
 
