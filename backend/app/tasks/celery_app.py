@@ -34,11 +34,16 @@ celery_app.conf.update(
         "tasks.analyze_snapshot": {"queue": "sira_exam"},
         "tasks.check_heartbeat": {"queue": "sira_exam"},
         "tasks.finalize_session": {"queue": "sira_exam"},
+        "tasks.check_edge_anomalies": {"queue": "sira_exam"},
     },
     beat_schedule={
         "check-heartbeat-every-30s": {
             "task": "tasks.check_heartbeat",
             "schedule": 30.0,  # every 30 seconds
+        },
+        "check-edge-anomalies-every-5min": {
+            "task": "tasks.check_edge_anomalies",
+            "schedule": 300.0,  # every 5 minutes — E3-14
         },
     },
 )

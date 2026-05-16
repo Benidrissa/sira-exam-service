@@ -531,6 +531,99 @@ async def _check_heartbeat_async() -> dict:  # type: ignore[type-arg]
 
 
 # ---------------------------------------------------------------------------
+# Task: check_edge_anomalies  (Celery beat — every 5 min) — E3-14
+# ---------------------------------------------------------------------------
+
+
+@celery_app.task(name="tasks.check_edge_anomalies")
+def check_edge_anomalies() -> dict:  # type: ignore[type-arg]
+    """Detect sessions where edge AI may be tampered with (E3-14).
+
+    Flags sessions where edge clean rate > 98% but server-side violation rate > 20%.
+    """
+    try:
+        return asyncio.run(_check_edge_anomalies_async())
+    except Exception as exc:
+        logger.error("check_edge_anomalies_failed", error=str(exc))
+        return {"error": str(exc)}
+
+
+async def _check_edge_anomalies_async() -> dict:  # type: ignore[type-arg]
+    from sqlalchemy import func as sa_func
+    from sqlalchemy import select as sa_select
+
+    from app.core.database import celery_db
+    from app.domain.models.proctor import (  # type: ignore[attr-defined]
+        EventSeverity,
+        ExamSession,
+        ProctorAlert,
+        ProctorSnapshot,
+        SessionStatus,
+    )
+
+    async with celery_db() as db:
+        # Find active sessions with enough edge data to evaluate
+        active_sessions = (
+            await db.execute(
+                sa_select(ExamSession).where(ExamSession.status == SessionStatus.active)
+            )
+        ).scalars().all()
+
+        flagged_count = 0
+        for session in active_sessions:
+            # Count edge-classified frames
+            edge_total = await db.scalar(
+                sa_select(sa_func.count(ProctorSnapshot.id)).where(
+                    ProctorSnapshot.session_id == session.id,
+                    ProctorSnapshot.edge_verdict.is_not(None),
+                )
+            ) or 0
+            if edge_total < 20:
+                continue  # not enough data
+
+            edge_clean = await db.scalar(
+                sa_select(sa_func.count(ProctorSnapshot.id)).where(
+                    ProctorSnapshot.session_id == session.id,
+                    ProctorSnapshot.edge_verdict == "clean",
+                )
+            ) or 0
+
+            server_flagged = await db.scalar(
+                sa_select(sa_func.count(ProctorSnapshot.id)).where(
+                    ProctorSnapshot.session_id == session.id,
+                    ProctorSnapshot.violation_detected == True,  # noqa: E712
+                    ProctorSnapshot.edge_verdict.is_not(None),
+                )
+            ) or 0
+
+            edge_clean_rate = edge_clean / edge_total if edge_total > 0 else 0
+            server_violation_rate = server_flagged / edge_total if edge_total > 0 else 0
+
+            if edge_clean_rate > 0.98 and server_violation_rate > 0.20:
+                alert = ProctorAlert(
+                    id=_uuid_module.uuid4(),
+                    session_id=session.id,
+                    severity=EventSeverity.critical,
+                    message=(
+                        f"Possible edge model tampering: "
+                        f"edge clean {edge_clean_rate:.0%}, "
+                        f"server violations {server_violation_rate:.0%} on sampled frames"
+                    ),
+                )
+                db.add(alert)
+                flagged_count += 1
+                logger.warning(
+                    "edge_anomaly_detected",
+                    session_id=str(session.id),
+                    edge_clean_rate=edge_clean_rate,
+                    server_violation_rate=server_violation_rate,
+                )
+
+        await db.commit()
+        return {"checked": len(active_sessions), "flagged": flagged_count}
+
+
+# ---------------------------------------------------------------------------
 # Task: finalize_session
 # ---------------------------------------------------------------------------
 

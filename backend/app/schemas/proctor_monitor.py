@@ -80,6 +80,11 @@ class ProctorSnapshotSchema(BaseModel):
     created_at: datetime
     # Enriched at response time — not from DB
     download_url: str | None = None
+    # E3-14: Edge AI transparency fields
+    edge_verdict: str | None = None
+    edge_confidence: float | None = None
+    is_offline_frame: bool = False
+    integrity_check_passed: bool | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -107,6 +112,8 @@ class SessionSummarySchema(BaseModel):
     # Enriched at response time
     unacked_alert_count: int = 0
     latest_snapshot_url: str | None = None
+    # E3-14: Edge AI coverage
+    edge_coverage_pct: float | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -131,6 +138,8 @@ class SessionDetailSchema(BaseModel):
     recent_events: list[ProctorEventSchema] = []
     recent_snapshots: list[ProctorSnapshotSchema] = []
     network_gaps: list[NetworkGapSchema] = []
+    # E3-14: Edge AI coverage
+    edge_coverage_pct: float | None = None
 
 
 # ---------------------------------------------------------------------------
