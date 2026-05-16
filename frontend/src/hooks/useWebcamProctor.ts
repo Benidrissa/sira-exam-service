@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { getSnapshotUploadUrl, recordSnapshot } from "@/lib/api";
+import type { EdgeResult } from "@/hooks/useEdgeProctor";
 
 export function useWebcamProctor(
   sessionId: string | null,
@@ -10,9 +11,17 @@ export function useWebcamProctor(
   intervalMs: number = 10_000,
   connectivityState?: import("@/hooks/useConnectivityProbe").ConnectivityState,
   offlineDb?: IDBDatabase | null,
+  aiTier?: 0 | 1 | 2,
+  vlmConfig?: import("@/types/exam").VLMConfigResponse | null,
+  onEdgeResult?: (result: EdgeResult) => void,
 ) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+
+  // Edge AI result store: snapshotId → EdgeResult (populated by registerEdgeResult)
+  const edgeResultsRef = useRef<Map<string, EdgeResult>>(new Map());
+  const frameSeqRef = useRef(0);
+  const prevSnapshotIdRef = useRef<string | null>(null);
 
   // Start/stop webcam stream
   useEffect(() => {
@@ -74,7 +83,30 @@ export function useWebcamProctor(
       canvas.toBlob(
         async (blob) => {
           if (!blob) return;
+
+          // Increment frame sequence for this capture
+          frameSeqRef.current += 1;
+          const currentSeq = frameSeqRef.current;
           const snapshotId = crypto.randomUUID();
+
+          // SHA-256 of the blob bytes (before upload)
+          let frameSha256: string | undefined;
+          try {
+            const arrayBuffer = await blob.arrayBuffer();
+            const hashBuffer = await crypto.subtle.digest("SHA-256", arrayBuffer);
+            frameSha256 = Array.from(new Uint8Array(hashBuffer))
+              .map((b) => b.toString(16).padStart(2, "0"))
+              .join("");
+          } catch {
+            frameSha256 = undefined;
+          }
+
+          // One-frame lag: use the edge result from the PREVIOUS snapshot
+          // (allows the worker inference to complete before we attach the verdict)
+          const prevEdgeResult = prevSnapshotIdRef.current
+            ? edgeResultsRef.current.get(prevSnapshotIdRef.current)
+            : undefined;
+
           try {
             const { upload_url, storage_key } = await getSnapshotUploadUrl(
               sessionId,
@@ -85,9 +117,35 @@ export function useWebcamProctor(
               body: blob,
               headers: { "Content-Type": "image/jpeg" },
             });
-            await recordSnapshot(sessionId, snapshotId, storage_key);
+            await recordSnapshot(sessionId, snapshotId, storage_key, {
+              frame_sha256: frameSha256,
+              frame_sequence_number: currentSeq,
+              edge_verdict: prevEdgeResult?.verdict ?? undefined,
+              edge_confidence: prevEdgeResult?.confidence ?? undefined,
+              edge_violation_type: prevEdgeResult?.violationType ?? undefined,
+              edge_model_version: prevEdgeResult?.modelVersion ?? undefined,
+              is_offline_frame: false,
+              edge_processed: !!prevEdgeResult,
+            });
           } catch (e) {
             console.error("Snapshot upload failed:", e);
+          }
+
+          // Track this snapshot as "previous" for the next capture cycle
+          prevSnapshotIdRef.current = snapshotId;
+
+          // Notify caller to dispatch frame to edge worker (play/page.tsx wires this)
+          if (onEdgeResult && aiTier && aiTier > 0 && video.videoWidth) {
+            // Caller receives a stub so it can correlate the snapshotId
+            // Actual inference result will come back via registerEdgeResult()
+            onEdgeResult({
+              snapshotId,
+              verdict: "uncertain",
+              violationType: "none",
+              confidence: 0,
+              inferenceMs: 0,
+              modelVersion: vlmConfig?.model_version ?? "",
+            });
           }
         },
         "image/jpeg",
@@ -97,7 +155,7 @@ export function useWebcamProctor(
 
     const snapshotInterval = setInterval(captureSnapshot, intervalMs);
     return () => clearInterval(snapshotInterval);
-  }, [enabled, sessionId, sessionToken, intervalMs, connectivityState, offlineDb]);
+  }, [enabled, sessionId, sessionToken, intervalMs, connectivityState, offlineDb, aiTier, vlmConfig, onEdgeResult]);
 
   // Heartbeat loop (every 30s — keepalive fetch so headers can be set; sendBeacon cannot)
   useEffect(() => {
@@ -132,5 +190,13 @@ export function useWebcamProctor(
     return () => clearInterval(heartbeatInterval);
   }, [enabled, sessionId, sessionToken]);
 
-  return { videoRef };
+  /**
+   * Called by play/page.tsx after receiving an EdgeResult from useEdgeProctor.
+   * Stores the result so the NEXT snapshot capture can attach it to its POST body.
+   */
+  const registerEdgeResult = (snapshotId: string, result: EdgeResult) => {
+    edgeResultsRef.current.set(snapshotId, result);
+  };
+
+  return { videoRef, registerEdgeResult };
 }
