@@ -355,3 +355,45 @@
 
 ### Linked FRs: FR-2.6, FR-2.9  
 ### Linked GitHub Issues: #24, #27
+
+---
+
+## Phase 3 — Edge AI + Lockdown Hardening
+
+---
+
+## US-13: Student Verifies Identity with Selfie + ID Before Exam
+
+**As a** Student
+**I want to** photograph myself holding my government-issued ID next to my face before the exam
+**So that** my identity is confirmed and the system can prove the exam taker matches the ID
+
+### Preconditions
+- Phase 3 deployed to staging
+- ExamTest configured as `phase=remote`
+- Browser with camera + fullscreen capability
+- Student has a government-issued photo ID available
+
+### Steps
+1. Navigate to `/session/pre-check/`
+2. Complete system check (step 1) and camera preview (step 2)
+3. Arrive at **Identity Verification** step
+4. Read overlay instructions: "Hold your ID document next to your face within the frame"
+5. Click "Capture photo" → spinner appears
+6. Wait ≤15s for AI validation result
+7. **On success**: green "Verified ✅" badge appears → "Next" button enabled
+8. **On rejection**: red banner with reason (e.g., "ID document not visible") + "Retry" button
+9. After 3 consecutive failures → "Verification failed — a proctor will review your session" message; exam blocked
+
+### Acceptance Criteria
+- [ ] AC1: Identity verification step appears in pre-check wizard between camera-preview and consent
+- [ ] AC2: "Capture" button disabled until live webcam feed is active
+- [ ] AC3: AI result shown within 15s of capture
+- [ ] AC4: Success → green badge, "Next" enabled, proceed to consent step
+- [ ] AC5: Failure → human-readable reason displayed, "Retry" button shown
+- [ ] AC6: After 3 failures → session flagged, exam blocked, proctor alerted on dashboard
+- [ ] AC7: Exam cannot start until `session.identity_verified=True` (backend enforced)
+- [ ] AC8: Browser: no JS console errors throughout flow
+
+### Linked FRs: FR-3.15
+### Linked GitHub Issue: #119
