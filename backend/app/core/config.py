@@ -41,6 +41,10 @@ class Settings(BaseSettings):
     # Generation limits (mirrors Sira's syllabus context budget)
     source_context_budget_chars: int = 400_000
 
+    # Heartbeat / disconnection thresholds
+    heartbeat_disconnected_threshold: int = 3
+    session_reconnect_grace_period_seconds: int = 120
+
     # Feature flags
     enable_proctor_vision: bool = True
     debug: bool = False

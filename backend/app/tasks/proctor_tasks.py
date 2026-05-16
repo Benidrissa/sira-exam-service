@@ -218,27 +218,48 @@ async def _check_heartbeat_async() -> dict:  # type: ignore[type-arg]
     from app.domain.models.proctor import (  # type: ignore[attr-defined]
         EventSeverity,
         ExamSession,
+        NetworkGap,
         ProctorAlert,
         ProctorEvent,
         SessionStatus,
     )
 
-    threshold = datetime.now(UTC) - timedelta(seconds=75)  # 2.5 × heartbeat interval
+    heartbeat_threshold = datetime.now(UTC) - timedelta(seconds=75)  # 2.5 × heartbeat interval
+    grace_cutoff = datetime.now(UTC) - timedelta(
+        seconds=settings.session_reconnect_grace_period_seconds
+    )
 
     async with celery_db() as db:
-        result = await db.execute(
+        # ------------------------------------------------------------------
+        # Branch A — active sessions that missed a heartbeat
+        # ------------------------------------------------------------------
+        active_result = await db.execute(
             select(ExamSession).where(
                 ExamSession.status == SessionStatus.active,
-                ExamSession.last_heartbeat_at < threshold,
+                ExamSession.last_heartbeat_at < heartbeat_threshold,
             )
         )
-        sessions = result.scalars().all()
+        active_sessions = active_result.scalars().all()
+
+        # ------------------------------------------------------------------
+        # Branch B — disconnected sessions past the reconnect grace period
+        # ------------------------------------------------------------------
+        disconnected_result = await db.execute(
+            select(ExamSession).where(
+                ExamSession.status == SessionStatus.disconnected,
+                ExamSession.disconnected_at < grace_cutoff,
+            )
+        )
+        disconnected_sessions = disconnected_result.scalars().all()
 
         flagged = 0
+        expired = 0
+        now = datetime.now(UTC)
+
         r = sync_redis_lib.from_url(settings.redis_url)
         try:
-            for session in sessions:
-                # Idempotency guard: skip if already processed within this 60 s window
+            # --- Branch A: active → disconnected at threshold misses ---
+            for session in active_sessions:
                 lock_key = f"exam:heartbeat_check:{session.id}"
                 if r.exists(lock_key):
                     continue
@@ -247,52 +268,140 @@ async def _check_heartbeat_async() -> dict:  # type: ignore[type-arg]
                 session.consecutive_missed_heartbeats = (
                     session.consecutive_missed_heartbeats or 0
                 ) + 1
-
                 missed = session.consecutive_missed_heartbeats
-                severity = EventSeverity.high if missed >= 3 else EventSeverity.medium
 
-                event = ProctorEvent(
-                    id=_uuid_module.uuid4(),
-                    session_id=session.id,
-                    event_type="heartbeat_missed",
-                    severity=severity,
-                    payload={"count": missed},
-                )
-                db.add(event)
+                if missed >= settings.heartbeat_disconnected_threshold:
+                    session.status = SessionStatus.disconnected
+                    session.disconnected_at = now
 
-                if missed >= 5:
-                    session.status = SessionStatus.expired
-                    session.ended_at = datetime.now(UTC)
-                    session.termination_reason = "heartbeat_timeout"
+                    # Create NetworkGap to start tracking the interruption
+                    gap = NetworkGap(
+                        id=_uuid_module.uuid4(),
+                        session_id=session.id,
+                        disconnected_at=now,
+                        missed_heartbeat_count=missed,
+                        auto_expired=False,
+                    )
+                    db.add(gap)
+
+                    event = ProctorEvent(
+                        id=_uuid_module.uuid4(),
+                        session_id=session.id,
+                        event_type="network_interruption_suspected",
+                        severity=EventSeverity.medium,
+                        payload={"missed_count": missed},
+                    )
+                    db.add(event)
 
                     alert = ProctorAlert(
                         id=_uuid_module.uuid4(),
                         session_id=session.id,
-                        severity=EventSeverity.critical,
-                        message=(f"Session auto-expired: {missed} consecutive missed heartbeats"),
+                        severity=EventSeverity.medium,
+                        message=(
+                            f"Session disconnected: {missed} consecutive missed heartbeats. "
+                            f"Grace period: {settings.session_reconnect_grace_period_seconds}s."
+                        ),
                     )
                     db.add(alert)
 
-                    # Notify proctor via Redis
                     r.publish(
                         f"proctor:session:{session.id}",
                         json.dumps(
                             {
-                                "type": "session_expired",
+                                "type": "session_disconnected",
                                 "session_id": str(session.id),
-                                "reason": "heartbeat_timeout",
                                 "missed_count": missed,
                             }
                         ),
                     )
+                else:
+                    # Still below threshold — just log the miss
+                    event = ProctorEvent(
+                        id=_uuid_module.uuid4(),
+                        session_id=session.id,
+                        event_type="heartbeat_missed",
+                        severity=EventSeverity.medium,
+                        payload={"count": missed},
+                    )
+                    db.add(event)
 
                 flagged += 1
+
+            # --- Branch B: disconnected → expired after grace period ---
+            for session in disconnected_sessions:
+                lock_key = f"exam:grace_expired:{session.id}"
+                if r.exists(lock_key):
+                    continue
+                r.setex(lock_key, 60, "1")
+
+                session.status = SessionStatus.expired
+                session.ended_at = now
+                session.termination_reason = "reconnect_grace_period_expired"
+
+                # Close the open NetworkGap for this session
+                gap_result = await db.execute(
+                    select(NetworkGap).where(
+                        NetworkGap.session_id == session.id,
+                        NetworkGap.reconnected_at.is_(None),
+                    )
+                )
+                open_gap = gap_result.scalars().first()
+                if open_gap and session.disconnected_at:
+                    open_gap.reconnected_at = now
+                    open_gap.auto_expired = True
+                    open_gap.duration_seconds = int(
+                        (now - session.disconnected_at).total_seconds()
+                    )
+
+                event = ProctorEvent(
+                    id=_uuid_module.uuid4(),
+                    session_id=session.id,
+                    event_type="session_auto_expired",
+                    severity=EventSeverity.critical,
+                    payload={"reason": "reconnect_grace_period_expired"},
+                )
+                db.add(event)
+
+                alert = ProctorAlert(
+                    id=_uuid_module.uuid4(),
+                    session_id=session.id,
+                    severity=EventSeverity.critical,
+                    message=(
+                        "Session auto-expired: reconnect grace period exceeded "
+                        f"({settings.session_reconnect_grace_period_seconds}s)."
+                    ),
+                )
+                db.add(alert)
+
+                r.publish(
+                    f"proctor:session:{session.id}",
+                    json.dumps(
+                        {
+                            "type": "session_expired",
+                            "session_id": str(session.id),
+                            "reason": "reconnect_grace_period_expired",
+                        }
+                    ),
+                )
+
+                expired += 1
+
         finally:
             r.close()
 
         await db.commit()
-        logger.info("heartbeat_check_done", checked=len(sessions), flagged=flagged)
-        return {"checked": len(sessions), "flagged": flagged}
+        logger.info(
+            "heartbeat_check_done",
+            active_checked=len(active_sessions),
+            disconnected_checked=len(disconnected_sessions),
+            flagged=flagged,
+            expired=expired,
+        )
+        return {
+            "checked": len(active_sessions),
+            "flagged": flagged,
+            "expired": expired,
+        }
 
 
 # ---------------------------------------------------------------------------

@@ -203,7 +203,7 @@ async def terminate_session(
 
     _assert_org_access(user, session.org_id)
 
-    if session.status not in (SessionStatus.active,):
+    if session.status not in (SessionStatus.active, SessionStatus.disconnected):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Session is already {session.status.value}",
