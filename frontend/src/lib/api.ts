@@ -295,3 +295,35 @@ export async function terminateSessionAsProctor(
     body: JSON.stringify({ reason }),
   });
 }
+
+// ---------------------------------------------------------------------------
+// Offline / connectivity helpers
+// ---------------------------------------------------------------------------
+
+export async function checkHealth(): Promise<boolean> {
+  const base = (process.env.NEXT_PUBLIC_EXAM_API_URL ?? "http://localhost:8001/api/v1").replace(
+    /\/api\/v1$/,
+    "",
+  );
+  try {
+    const resp = await fetch(`${base}/health`, { method: "HEAD", cache: "no-store" });
+    return resp.ok;
+  } catch {
+    return false;
+  }
+}
+
+export async function heartbeatResume(
+  sessionId: string,
+  sessionToken: string,
+  body: { answer_drafts?: Record<string, unknown> },
+): Promise<{ ok: boolean; reconnected_at: string }> {
+  return apiFetch<{ ok: boolean; reconnected_at: string }>(
+    `/proctor/sessions/${sessionId}/heartbeat-resume`,
+    {
+      method: "POST",
+      headers: { "X-Session-Token": sessionToken },
+      body: JSON.stringify(body),
+    },
+  );
+}
