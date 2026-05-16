@@ -83,6 +83,7 @@ class ExamSession(Base):
     )
     reference_frame_key: Mapped[str | None] = mapped_column(Text, nullable=True)
     termination_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    edge_metadata: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
     # Relationships
     attempt: Mapped[ExamAttempt] = relationship(  # type: ignore[name-defined]  # noqa: F821

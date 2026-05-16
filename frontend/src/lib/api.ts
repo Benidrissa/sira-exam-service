@@ -11,6 +11,7 @@ import type {
   ScenarioBrief,
   SessionDetail,
   SessionSummary,
+  VLMConfigResponse,
 } from "@/types/exam";
 
 const API_BASE =
@@ -294,6 +295,10 @@ export async function terminateSessionAsProctor(
     method: "PATCH",
     body: JSON.stringify({ reason }),
   });
+}
+
+export async function getVLMConfig(): Promise<VLMConfigResponse> {
+  return apiFetch<VLMConfigResponse>("/proctor/vlm-config");
 }
 
 // ---------------------------------------------------------------------------
