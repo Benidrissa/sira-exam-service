@@ -74,6 +74,7 @@ class ExamSession(Base):
         DateTime(timezone=True), nullable=True
     )
     consecutive_missed_heartbeats: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    snapshot_interval_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=10_000)
     consent_given: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     consent_given_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True

@@ -34,6 +34,7 @@ export default function ExamPlayerPage() {
   const [proctoringSessionId, setProctoringSessionId] = useState<string | null>(null);
   const [proctoringToken, setProctoringToken] = useState<string | null>(null);
   const [isRemoteExam, setIsRemoteExam] = useState(false);
+  const [snapshotIntervalMs, setSnapshotIntervalMs] = useState(10_000);
 
   // Restore proctoring session across hard reloads (React state is not persistent)
   useEffect(() => {
@@ -54,6 +55,7 @@ export default function ExamPlayerPage() {
     proctoringSessionId,
     proctoringToken,
     isRemoteExam,
+    snapshotIntervalMs,
   );
 
   useEffect(() => {
@@ -67,6 +69,7 @@ export default function ExamPlayerPage() {
           const ps = await startProctoringSession(s.attempt_id);
           setProctoringSessionId(ps.session_id);
           setProctoringToken(ps.session_token);
+          setSnapshotIntervalMs(ps.snapshot_interval_ms);
           sessionStorage.setItem("proctor_session_id", ps.session_id);
           sessionStorage.setItem("proctor_session_token", ps.session_token);
         } catch (procErr) {

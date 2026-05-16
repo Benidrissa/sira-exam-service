@@ -198,7 +198,7 @@ export const getQuestions = async (
 
 export async function startProctoringSession(
   attemptId: string,
-): Promise<{ session_id: string; session_token: string }> {
+): Promise<ProctoringSession> {
   return apiFetch<ProctoringSession>("/proctor/sessions/start", {
     method: "POST",
     body: JSON.stringify({ attempt_id: attemptId }),
