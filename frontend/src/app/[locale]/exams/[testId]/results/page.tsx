@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { CheckCircle2, XCircle, Clock, FileText, Home } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { CheckCircle2, Clock, FileText, Home, Info } from "lucide-react";
 
 function ResultsContent() {
   const { testId: _testId, locale } = useParams<{ testId: string; locale?: string }>();
@@ -17,11 +18,9 @@ function ResultsContent() {
   const attemptId = searchParams.get("attemptId");
   const scoreStr = searchParams.get("score");
   const totalStr = searchParams.get("total");
-  const passedStr = searchParams.get("passed");
 
   const score = scoreStr != null ? parseFloat(scoreStr) : null;
   const total = totalStr != null ? parseFloat(totalStr) : null;
-  const passed = passedStr === "true" ? true : passedStr === "false" ? false : null;
 
   if (!attemptId) {
     return (
@@ -46,32 +45,40 @@ function ResultsContent() {
 
   return (
     <main className="max-w-2xl mx-auto p-8 space-y-6">
+      {/* Header — neutral, no pass/fail yet */}
       <div className="flex items-center gap-3">
-        {passed === true ? (
-          <CheckCircle2 className="h-8 w-8 text-emerald-500" />
-        ) : passed === false ? (
-          <XCircle className="h-8 w-8 text-destructive" />
-        ) : (
-          <Clock className="h-8 w-8 text-muted-foreground" />
-        )}
+        <CheckCircle2 className="h-8 w-8 text-emerald-500 shrink-0" />
         <div>
           <h1 className="text-2xl font-bold">Exam Submitted</h1>
-          <p className="text-sm text-muted-foreground">Your answers have been recorded.</p>
+          <p className="text-sm text-muted-foreground">
+            Your answers have been recorded successfully.
+          </p>
         </div>
-        {passed != null && (
-          <Badge
-            variant={passed ? "success" : "destructive"}
-            className="ml-auto text-sm px-3 py-1"
-          >
-            {passed ? "Passed" : "Not Passed"}
-          </Badge>
-        )}
+        <Badge variant="warning" className="ml-auto shrink-0">
+          Awaiting review
+        </Badge>
       </div>
 
+      {/* Notice: final result pending */}
+      <Alert>
+        <Info className="h-4 w-4" />
+        <AlertDescription>
+          Your final result will be communicated by your teacher once all grading — including
+          the review of written answers — is complete.
+        </AlertDescription>
+      </Alert>
+
+      {/* MCQ score — automatic, preliminary */}
       {score != null && (
         <Card>
-          <CardHeader>
-            <CardTitle className="text-base">MCQ Score</CardTitle>
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base">Automatic scoring — MCQ</CardTitle>
+              <Badge variant="secondary" className="text-xs">Preliminary</Badge>
+            </div>
+            <CardDescription>
+              Multiple-choice questions are scored automatically.
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="flex items-end gap-2">
@@ -89,20 +96,25 @@ function ResultsContent() {
         </Card>
       )}
 
+      {/* Dissertation — pending human review */}
       <Card>
         <CardHeader className="flex-row items-center gap-3 space-y-0">
           <FileText className="h-5 w-5 text-primary shrink-0" />
           <div>
-            <CardTitle className="text-base">Dissertation Answers</CardTitle>
+            <CardTitle className="text-base">Written answers — Teacher review</CardTitle>
             <CardDescription>
-              Your written answers are being graded by AI, followed by your teacher.
+              Your essays are first graded by AI, then reviewed and validated by your teacher.
             </CardDescription>
           </div>
         </CardHeader>
-        <CardContent>
-          <Badge variant="warning">Grading in progress</Badge>
-          <p className="mt-3 text-sm text-muted-foreground">
-            Your teacher will share final dissertation scores and feedback once grading is complete.
+        <CardContent className="space-y-2">
+          <div className="flex items-center gap-2">
+            <Clock className="h-4 w-4 text-amber-500" />
+            <Badge variant="warning">Pending teacher review</Badge>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Your teacher will communicate your written scores and feedback directly.
+            This is the authoritative grading step — the final result depends on it.
           </p>
         </CardContent>
       </Card>
