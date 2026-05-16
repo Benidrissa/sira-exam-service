@@ -69,7 +69,7 @@ async def list_sessions(
     latest_snap_sq = (
         sa_select(ProctorSnapshot.storage_key)
         .where(ProctorSnapshot.session_id == ExamSession.id)
-        .order_by(ProctorSnapshot.created_at.desc())
+        .order_by(ProctorSnapshot.taken_at.desc())
         .limit(1)
         .correlate(ExamSession)
         .scalar_subquery()
@@ -157,7 +157,7 @@ async def get_session_detail(
     snap_result = await db.execute(
         select(ProctorSnapshot)
         .where(ProctorSnapshot.session_id == session_id)
-        .order_by(ProctorSnapshot.created_at.desc())
+        .order_by(ProctorSnapshot.taken_at.desc())
         .limit(10)
     )
     snaps = snap_result.scalars().all()
