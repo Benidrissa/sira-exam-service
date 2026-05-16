@@ -123,6 +123,17 @@ class ProctorSnapshot(Base):
     violation_type: Mapped[str | None] = mapped_column(Text, nullable=True)
     confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
 
+    # E3-9: Edge AI metadata
+    frame_sha256: Mapped[str | None] = mapped_column(Text, nullable=True)
+    edge_verdict: Mapped[str | None] = mapped_column(Text, nullable=True)
+    edge_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    edge_model_version: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_offline_frame: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    captured_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    integrity_check_passed: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    integrity_failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    edge_processed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
     session: Mapped[ExamSession] = relationship("ExamSession", back_populates="snapshots")
 
 

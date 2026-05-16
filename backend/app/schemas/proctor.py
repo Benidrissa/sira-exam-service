@@ -57,6 +57,14 @@ class SnapshotUploadUrlResponse(BaseModel):
 class SnapshotRecordedRequest(BaseModel):
     snapshot_id: uuid.UUID
     storage_key: str
+    # E3-9: Edge AI optional fields (backward-compatible, old clients omit these)
+    frame_sha256: str | None = None
+    edge_verdict: str | None = None
+    edge_confidence: float | None = None
+    edge_model_version: str | None = None
+    is_offline_frame: bool = False
+    captured_at: datetime | None = None
+    edge_processed: bool = False
 
 
 class SnapshotRecordedResponse(BaseModel):

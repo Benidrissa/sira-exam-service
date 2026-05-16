@@ -1,4 +1,5 @@
 from celery import Celery
+from kombu import Queue
 
 from app.core.config import settings
 
@@ -24,6 +25,16 @@ celery_app.conf.update(
     worker_prefetch_multiplier=1,
     # Dedicated queue so sira tasks don't mix with etutor's default "celery" queue
     task_default_queue="sira_exam",
+    task_queues=(
+        Queue("sira_exam"),
+        Queue("sira_exam_high"),
+        Queue("sira_exam_low"),
+    ),
+    task_routes={
+        "tasks.analyze_snapshot": {"queue": "sira_exam"},
+        "tasks.check_heartbeat": {"queue": "sira_exam"},
+        "tasks.finalize_session": {"queue": "sira_exam"},
+    },
     beat_schedule={
         "check-heartbeat-every-30s": {
             "task": "tasks.check_heartbeat",

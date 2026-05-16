@@ -207,6 +207,14 @@ async def snapshot_recorded(
         id=body.snapshot_id,
         session_id=session_id,
         storage_key=body.storage_key,
+        # E3-9: Edge AI metadata (all optional)
+        frame_sha256=body.frame_sha256,
+        edge_verdict=body.edge_verdict,
+        edge_confidence=body.edge_confidence,
+        edge_model_version=body.edge_model_version,
+        is_offline_frame=body.is_offline_frame,
+        captured_at=body.captured_at,
+        edge_processed=body.edge_processed,
     )
     db.add(snapshot)
     await db.commit()
