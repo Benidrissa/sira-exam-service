@@ -11,6 +11,7 @@ import type {
   ScenarioBrief,
   SessionDetail,
   SessionSummary,
+  VLMConfigResponse,
 } from "@/types/exam";
 
 const API_BASE =
@@ -198,7 +199,7 @@ export const getQuestions = async (
 
 export async function startProctoringSession(
   attemptId: string,
-): Promise<{ session_id: string; session_token: string }> {
+): Promise<ProctoringSession> {
   return apiFetch<ProctoringSession>("/proctor/sessions/start", {
     method: "POST",
     body: JSON.stringify({ attempt_id: attemptId }),
@@ -235,10 +236,24 @@ export async function recordSnapshot(
   sessionId: string,
   snapshotId: string,
   storageKey: string,
+  edgeMeta?: {
+    frame_sha256?: string;
+    frame_sequence_number?: number;
+    edge_verdict?: string;
+    edge_confidence?: number;
+    edge_violation_type?: string;
+    edge_model_version?: string;
+    is_offline_frame?: boolean;
+    edge_processed?: boolean;
+  },
 ): Promise<void> {
   await apiFetch<unknown>(`/proctor/sessions/${sessionId}/snapshot-recorded`, {
     method: "POST",
-    body: JSON.stringify({ snapshot_id: snapshotId, storage_key: storageKey }),
+    body: JSON.stringify({
+      snapshot_id: snapshotId,
+      storage_key: storageKey,
+      ...edgeMeta,
+    }),
   });
 }
 
@@ -294,4 +309,40 @@ export async function terminateSessionAsProctor(
     method: "PATCH",
     body: JSON.stringify({ reason }),
   });
+}
+
+export async function getVLMConfig(): Promise<VLMConfigResponse> {
+  return apiFetch<VLMConfigResponse>("/proctor/vlm-config");
+}
+
+// ---------------------------------------------------------------------------
+// Offline / connectivity helpers
+// ---------------------------------------------------------------------------
+
+export async function checkHealth(): Promise<boolean> {
+  const base = (process.env.NEXT_PUBLIC_EXAM_API_URL ?? "http://localhost:8001/api/v1").replace(
+    /\/api\/v1$/,
+    "",
+  );
+  try {
+    const resp = await fetch(`${base}/health`, { method: "HEAD", cache: "no-store" });
+    return resp.ok;
+  } catch {
+    return false;
+  }
+}
+
+export async function heartbeatResume(
+  sessionId: string,
+  sessionToken: string,
+  body: { answer_drafts?: Record<string, unknown> },
+): Promise<{ ok: boolean; reconnected_at: string }> {
+  return apiFetch<{ ok: boolean; reconnected_at: string }>(
+    `/proctor/sessions/${sessionId}/heartbeat-resume`,
+    {
+      method: "POST",
+      headers: { "X-Session-Token": sessionToken },
+      body: JSON.stringify(body),
+    },
+  );
 }

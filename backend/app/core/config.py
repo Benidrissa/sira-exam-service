@@ -41,9 +41,24 @@ class Settings(BaseSettings):
     # Generation limits (mirrors Sira's syllabus context budget)
     source_context_budget_chars: int = 400_000
 
+    # Heartbeat / disconnection thresholds
+    heartbeat_disconnected_threshold: int = 3
+    session_reconnect_grace_period_seconds: int = 120
+
     # Feature flags
     enable_proctor_vision: bool = True
     debug: bool = False
+
+    # Edge AI (E3-9)
+    edge_ai_enabled: bool = False
+    edge_sha256_verification: bool = True
+    edge_skip_cloud_if_processed: bool = True
+    celery_high_queue: str = "sira_exam_high"
+    celery_low_queue: str = "sira_exam_low"
+
+    # VLM config (E3-10)
+    vlm_model_version: str = ""
+    vlm_cdn_base: str = ""
 
     # Sentry (optional)
     sentry_dsn: str = ""

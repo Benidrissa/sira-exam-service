@@ -19,6 +19,7 @@ from app.core.database import Base
 
 class SessionStatus(str, enum.Enum):
     active = "active"
+    disconnected = "disconnected"
     terminated = "terminated"
     expired = "expired"
     completed = "completed"
@@ -74,12 +75,15 @@ class ExamSession(Base):
         DateTime(timezone=True), nullable=True
     )
     consecutive_missed_heartbeats: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    disconnected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    snapshot_interval_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=10_000)
     consent_given: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     consent_given_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
     reference_frame_key: Mapped[str | None] = mapped_column(Text, nullable=True)
     termination_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    edge_metadata: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
     # Relationships
     attempt: Mapped[ExamAttempt] = relationship(  # type: ignore[name-defined]  # noqa: F821
@@ -119,6 +123,17 @@ class ProctorSnapshot(Base):
     violation_detected: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     violation_type: Mapped[str | None] = mapped_column(Text, nullable=True)
     confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    # E3-9: Edge AI metadata
+    frame_sha256: Mapped[str | None] = mapped_column(Text, nullable=True)
+    edge_verdict: Mapped[str | None] = mapped_column(Text, nullable=True)
+    edge_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    edge_model_version: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_offline_frame: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    captured_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    integrity_check_passed: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    integrity_failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    edge_processed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     session: Mapped[ExamSession] = relationship("ExamSession", back_populates="snapshots")
 
@@ -179,3 +194,25 @@ class ProctorAlert(Base):
 
     session: Mapped[ExamSession] = relationship("ExamSession", back_populates="alerts")
     event: Mapped[ProctorEvent | None] = relationship("ProctorEvent", back_populates="alerts")
+
+
+class NetworkGap(Base):
+    """Forensic record of a connectivity interruption during a proctored session."""
+
+    __tablename__ = "network_gaps"
+    __table_args__ = {"schema": "exam_svc"}
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("exam_svc.exam_sessions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    disconnected_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    reconnected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    duration_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    missed_heartbeat_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    auto_expired: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

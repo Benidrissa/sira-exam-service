@@ -150,16 +150,34 @@ export interface ProctoringSession {
   session_id: string;
   session_token: string;
   expires_in: number;
+  snapshot_interval_ms: number;
+}
+
+/** Forensic record of a connectivity interruption — E3-8 */
+export interface NetworkGap {
+  id: string;
+  session_id: string;
+  disconnected_at: string;
+  reconnected_at: string | null;
+  duration_seconds: number | null;
+  missed_heartbeat_count: number;
+  auto_expired: boolean;
 }
 
 export interface SessionSummary {
   id: string;
   user_id: string;
   started_at: string;
-  status: "active" | "terminated" | "expired" | "completed";
+  status: "active" | "disconnected" | "terminated" | "expired" | "completed";
   unacked_alert_count: number;
   latest_snapshot_url: string | null;
   consecutive_missed_heartbeats: number;
+  /** Timestamp when session went offline (status === "disconnected") — E3-8 */
+  disconnected_at?: string | null;
+  /** Sum of all gap durations in seconds — E3-8 */
+  total_offline_duration_s?: number | null;
+  /** Count of network interruption events — E3-8 */
+  offline_event_count?: number;
 }
 
 export interface ProctorAlert {
@@ -184,10 +202,28 @@ export interface SessionSnapshot {
   taken_at: string;
   violation_detected: boolean | null;
   download_url: string | null;
+  /** E3-14: Edge AI verdict for this frame ("clean" | "flagged" | null) */
+  edge_verdict?: string | null;
+  /** E3-14: Confidence score from edge model (0–1) */
+  edge_confidence?: number | null;
+  /** E3-14: True when frame was captured during an offline gap */
+  is_offline_frame?: boolean;
+  /** E3-14: Whether SHA-256 integrity check passed on server */
+  integrity_check_passed?: boolean | null;
 }
 
 export interface SessionDetail extends SessionSummary {
   events: SessionEvent[];
   alerts: ProctorAlert[];
   snapshots: SessionSnapshot[];
+  /** Chronological list of offline intervals — E3-8 */
+  network_gaps: NetworkGap[];
+}
+
+export interface VLMConfigResponse {
+  model_version: string;
+  cdn_base: string;
+  tier1_models: { name: string; url: string; sha256: string }[];
+  tier2_model: { name: string; url: string; sha256: string } | null;
+  mandatory_sample_rate: number;
 }

@@ -48,6 +48,17 @@ async def get_reference_frame_upload_url(session_id: str) -> str:
     return url
 
 
+_OFFLINE_FRAME_UPLOAD_EXPIRY = 600  # 10 minutes (vs 300s for live frames)
+
+
+async def get_offline_frame_upload_url(session_id: str, snapshot_id: str) -> tuple[str, str]:
+    """Return (presigned_put_url, storage_key) for an offline-captured frame."""
+    key = f"snapshots/{session_id}/{snapshot_id}.jpg"
+    storage = get_exam_storage()
+    url = await storage.presigned_put_url(key, expiry=_OFFLINE_FRAME_UPLOAD_EXPIRY)
+    return url, key
+
+
 async def ensure_exam_evidence_bucket() -> None:
     """Create the exam-evidence bucket if it does not already exist."""
     storage = get_exam_storage()

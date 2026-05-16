@@ -2,10 +2,15 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { startAttempt, submitAttempt, startProctoringSession, terminateSession } from "@/lib/api";
-import type { ExamQuestion, StartAttemptResponse } from "@/types/exam";
+import { startAttempt, submitAttempt, startProctoringSession, terminateSession, getVLMConfig } from "@/lib/api";
+import type { ExamQuestion, StartAttemptResponse, VLMConfigResponse } from "@/types/exam";
 import { useLockdownShell } from "@/hooks/useLockdownShell";
 import { useWebcamProctor } from "@/hooks/useWebcamProctor";
+import { useEdgeProctor } from "@/hooks/useEdgeProctor";
+import { useConnectivityProbe } from "@/hooks/useConnectivityProbe";
+import { OfflineBanner } from "@/components/OfflineBanner";
+import { openOfflineDb } from "@/lib/offlineDb";
+import { drain } from "@/lib/offlineSync";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -34,16 +39,98 @@ export default function ExamPlayerPage() {
   const [proctoringSessionId, setProctoringSessionId] = useState<string | null>(null);
   const [proctoringToken, setProctoringToken] = useState<string | null>(null);
   const [isRemoteExam, setIsRemoteExam] = useState(false);
+  const [snapshotIntervalMs, setSnapshotIntervalMs] = useState(10_000);
+  const [offlineDb, setOfflineDb] = useState<IDBDatabase | null>(null);
+  const [vlmConfig, setVlmConfig] = useState<VLMConfigResponse | null>(null);
+  // aiTier is written to sessionStorage during pre-check (E3-12); read once on mount
+  const aiTier = (
+    typeof sessionStorage !== "undefined"
+      ? parseInt(sessionStorage.getItem("proctor_ai_tier") ?? "0", 10)
+      : 0
+  ) as 0 | 1 | 2;
+
+  // Initialize IndexedDB
+  useEffect(() => {
+    openOfflineDb().then(setOfflineDb).catch(console.error);
+  }, []);
+
+  // Fetch VLM config when edge AI is required (aiTier > 0)
+  useEffect(() => {
+    if (aiTier > 0) {
+      getVLMConfig().then(setVlmConfig).catch(console.error);
+    }
+  // aiTier is a constant derived from sessionStorage — no reactive deps needed
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Restore proctoring session across hard reloads (React state is not persistent)
+  useEffect(() => {
+    const savedId = sessionStorage.getItem("proctor_session_id");
+    const savedToken = sessionStorage.getItem("proctor_session_token");
+    if (savedId && savedToken) {
+      setProctoringSessionId(savedId);
+      setProctoringToken(savedToken);
+      setIsRemoteExam(true);
+    }
+  }, []);
+
+  const handleForceTerminate = useCallback(async () => {
+    if (proctoringSessionId) {
+      try {
+        await terminateSession(proctoringSessionId);
+      } catch (e) {
+        console.error("Force terminate failed:", e);
+      } finally {
+        sessionStorage.removeItem("proctor_session_id");
+        sessionStorage.removeItem("proctor_session_token");
+      }
+    }
+    router.push(`/${effectiveLocale}/exams/${testId}/results?reason=lockdown_violation`);
+  }, [proctoringSessionId, router, testId, effectiveLocale]);
+
+  const handleDrain = useCallback(async () => {
+    if (!proctoringSessionId || !proctoringToken || !offlineDb) return;
+    await drain(proctoringSessionId, proctoringToken, offlineDb);
+  }, [proctoringSessionId, proctoringToken, offlineDb]);
+
+  const { connectivityState, offlineDurationSeconds, sessionExpired } = useConnectivityProbe(
+    proctoringSessionId,
+    proctoringToken,
+    handleDrain,
+  );
 
   // Lockdown shell — enabled only for remote exams
-  useLockdownShell(isRemoteExam);
+  const { fullscreenActive, fullscreenCountdown, violationCount } = useLockdownShell(
+    isRemoteExam,
+    proctoringSessionId,
+    proctoringToken,
+    handleForceTerminate,
+  );
 
   // Webcam proctoring — enabled only for remote exams
-  const { videoRef } = useWebcamProctor(
+  const { videoRef, registerEdgeResult } = useWebcamProctor(
     proctoringSessionId,
     proctoringToken,
     isRemoteExam,
+    snapshotIntervalMs,
+    connectivityState,
+    offlineDb,
+    aiTier,
+    vlmConfig,
   );
+
+  // Edge AI worker — only active when aiTier > 0 and vlmConfig is loaded
+  const MEDIAPIPE_WASM = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/wasm";
+  useEdgeProctor({
+    enabled: isRemoteExam && aiTier > 0 && vlmConfig !== null,
+    mediapipeWasmUrl: MEDIAPIPE_WASM,
+    taskModelUrl: vlmConfig?.tier1_models[0]?.url ?? "",
+    onnxModelUrl: vlmConfig?.tier1_models[1]?.url ?? "",
+    modelVersion: vlmConfig?.model_version ?? "",
+    onReady: () => console.log("[EdgeProctor] worker ready"),
+    onUnsupported: (reason) => console.warn("[EdgeProctor] unsupported:", reason),
+    onResult: (result) => registerEdgeResult(result.snapshotId, result),
+  });
 
   useEffect(() => {
     startAttempt(testId)
@@ -56,6 +143,9 @@ export default function ExamPlayerPage() {
           const ps = await startProctoringSession(s.attempt_id);
           setProctoringSessionId(ps.session_id);
           setProctoringToken(ps.session_token);
+          setSnapshotIntervalMs(ps.snapshot_interval_ms);
+          sessionStorage.setItem("proctor_session_id", ps.session_id);
+          sessionStorage.setItem("proctor_session_token", ps.session_token);
         } catch (procErr) {
           console.error("Failed to start proctoring session:", procErr);
         }
@@ -94,6 +184,9 @@ export default function ExamPlayerPage() {
           await terminateSession(proctoringSessionId);
         } catch (e) {
           console.error("Failed to terminate proctoring session:", e);
+        } finally {
+          sessionStorage.removeItem("proctor_session_id");
+          sessionStorage.removeItem("proctor_session_token");
         }
       }
 
@@ -148,6 +241,8 @@ export default function ExamPlayerPage() {
 
   return (
     <main className="max-w-3xl mx-auto pb-24">
+      <OfflineBanner state={connectivityState} offlineDurationSeconds={offlineDurationSeconds} />
+
       {/* Sticky header */}
       <div className="sticky top-0 z-10 bg-background/95 backdrop-blur shadow-sm border-b">
         <div className="flex items-center justify-between px-6 py-3 gap-4">
@@ -169,7 +264,7 @@ export default function ExamPlayerPage() {
 
           {/* Right: submit button */}
           <Button
-            disabled={submitting || submitted}
+            disabled={submitting || submitted || connectivityState === "DRAINING"}
             onClick={() => setShowConfirm(true)}
           >
             {submitting ? (
@@ -216,27 +311,67 @@ export default function ExamPlayerPage() {
           </div>
         )}
 
-        {session.questions.length === 0 && (
-          <p className="text-center py-12 text-muted-foreground text-sm">
-            No questions available for this exam.
-          </p>
-        )}
+        {/* Fullscreen gate — shown only for remote exams when fullscreen is lost */}
+        {isRemoteExam && !fullscreenActive ? (
+          <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 text-center px-6">
+            <p className="text-xl font-semibold text-destructive">Fullscreen Required</p>
+            <p className="text-sm text-muted-foreground max-w-xs">
+              Your exam requires fullscreen mode. Press{" "}
+              <kbd className="px-1 py-0.5 text-xs bg-muted rounded">F11</kbd>{" "}
+              or click below to continue.
+            </p>
+            {fullscreenCountdown > 0 && (
+              <p className="text-sm font-mono text-amber-600 font-semibold">
+                Session terminates in {fullscreenCountdown}s if not restored
+              </p>
+            )}
+            <button
+              className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90"
+              onClick={() => void document.documentElement.requestFullscreen()}
+            >
+              Return to Fullscreen
+            </button>
+            {violationCount > 0 && (
+              <p className="text-xs text-muted-foreground">{violationCount} violation(s) recorded</p>
+            )}
+          </div>
+        ) : (
+          <>
+            {session.questions.length === 0 && (
+              <p className="text-center py-12 text-muted-foreground text-sm">
+                No questions available for this exam.
+              </p>
+            )}
 
-        {session.questions.map((q, i) => (
-          <QuestionBlock
-            key={q.id}
-            index={i + 1}
-            question={q}
-            mcqAnswer={mcqAnswers[q.id] ?? []}
-            dissertationText={dissertations[q.id] ?? ""}
-            submitted={submitted}
-            onMCQSelect={(idx) => selectMCQ(q.id, idx)}
-            onDissertationChange={(text) =>
-              setDissertations((d) => ({ ...d, [q.id]: text }))
-            }
-          />
-        ))}
+            {session.questions.map((q, i) => (
+              <QuestionBlock
+                key={q.id}
+                index={i + 1}
+                question={q}
+                mcqAnswer={mcqAnswers[q.id] ?? []}
+                dissertationText={dissertations[q.id] ?? ""}
+                submitted={submitted}
+                onMCQSelect={(idx) => selectMCQ(q.id, idx)}
+                onDissertationChange={(text) =>
+                  setDissertations((d) => ({ ...d, [q.id]: text }))
+                }
+              />
+            ))}
+          </>
+        )}
       </div>
+
+      {/* Session expired modal */}
+      {sessionExpired && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-background rounded-lg p-6 max-w-sm text-center space-y-3">
+            <p className="font-semibold text-destructive">Session Expired</p>
+            <p className="text-sm text-muted-foreground">
+              Your exam session expired during the network outage. Please contact your instructor.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Webcam proctoring badge */}
       {isRemoteExam && proctoringSessionId && (

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import hashlib
 import json
 import uuid as _uuid_module
 from datetime import UTC, datetime, timedelta
@@ -20,6 +21,89 @@ from app.core.config import settings
 from app.tasks.celery_app import celery_app
 
 logger = structlog.get_logger(__name__)
+
+PROCTORING_SYSTEM_PROMPT = """\
+You are an automated online exam proctoring AI. Your sole job is to analyze \
+a single webcam frame captured during a remotely proctored academic examination \
+and report any integrity violations. You will always respond by calling the \
+report_proctoring_analysis tool — never with free text.
+
+VIOLATION TYPES — definitions and detection criteria:
+
+1. none
+   The student is alone, facing the camera, and no prohibited devices or \
+persons are visible. Assign this when the frame is clean.
+
+2. multiple_people
+   Two or more distinct human faces or bodies are visible in the frame at the \
+same time. A reflection or poster with a face does NOT count. Confidence should \
+be high (>=0.85) only when at least two fully or partially visible faces are \
+unambiguous. A fleeting shadow or heavily blurred background figure warrants \
+lower confidence (0.5–0.7).
+
+3. no_face
+   No human face is detectable in the frame. This includes: the student has \
+turned fully away, is absent from the seat, the camera is covered or pointed at \
+the ceiling, or the image is too dark/blurry to make any determination. \
+Distinguish from looking_away (face partially visible but gaze averted).
+
+4. looking_away
+   The student's face IS visible but gaze is directed significantly away from \
+the primary screen — laterally more than approximately 30 degrees, or downward \
+toward a concealed device. A brief glance does not automatically trigger this; \
+the posture must suggest sustained off-screen attention. Do not flag if the \
+student is reading a secondary monitor that is part of the legitimate exam \
+setup and visible in the same frame.
+
+5. phone_detected
+   A mobile phone, smartphone, or tablet held in hand or placed on the desk \
+is visible. Physical books and printed notes are NOT phone_detected. Smart \
+watches are borderline — flag at confidence 0.6 or below unless the screen is \
+clearly illuminated with messaging or search content.
+
+6. another_screen
+   A second monitor, laptop, or television displaying non-exam content is \
+visible in the background or reflected in glasses or surfaces. The student's \
+primary exam screen does NOT count. A dark or powered-off secondary monitor does \
+NOT count.
+
+7. other
+   A clear integrity concern exists but does not fit the categories above. \
+Use sparingly and provide a precise description field. Examples: student \
+visibly reading from notes taped off-camera, earpiece visible, \
+another person's hands visible on the keyboard.
+
+CONFIDENCE SCALE:
+0.0–0.39  : Possible or uncertain — do not flag as a violation in downstream \
+logic unless operator threshold is very low.
+0.40–0.59 : Likely — flag but treat as low-severity.
+0.60–0.84 : Probable — flag as medium-severity.
+0.85–1.00 : Certain — flag as high-severity; triggers immediate alert.
+
+FRAME QUALITY NOTES:
+If the image is completely black, white, or corrupted: set violation_detected=false, \
+violation_type=none, confidence=0.0, description="Frame unreadable due to quality issue."
+Do not speculate about events outside the frame. Only report what is visible.
+Privacy: do not describe the student's appearance, race, or gender in the description \
+field. Describe only the behavioral or object observation.
+
+LIGHTING AND ENVIRONMENTAL FACTORS:
+Poor lighting that obscures the face should be treated similarly to no_face if \
+the student cannot be identified. Reflections from glasses are common — only flag \
+another_screen if the reflected content is clearly readable or shows distinct \
+screen elements. Background blur from webcam depth-of-field effects is normal and \
+should not cause false positives for multiple_people.
+
+TEMPORAL CONTEXT:
+Each call receives a single static frame, not a video. You cannot infer duration \
+from a single frame. Make your assessment based solely on what is visible in the \
+current frame. Do not reference previous frames.
+
+OUTPUT FORMAT enforced by tool schema:
+Always call report_proctoring_analysis with all four required fields.
+The description field must be one concise sentence of 25 words or fewer stating \
+the specific observation that led to your conclusion.\
+"""
 
 
 # ---------------------------------------------------------------------------
@@ -58,12 +142,47 @@ async def _analyze_snapshot_async(snapshot_id: str) -> dict:  # type: ignore[typ
         await db.commit()
         await db.refresh(snap)
 
+        if not settings.enable_proctor_vision:
+            logger.info("proctor_vision_disabled", snapshot_id=snapshot_id)
+            snap.analysis_status = SnapshotAnalysis.clean
+            snap.analysis_result = {"skipped": True, "reason": "enable_proctor_vision=False"}
+            await db.commit()
+            return {"skipped": True}
+
         # Download image from MinIO
         from app.infrastructure.storage import get_exam_storage
 
         storage = get_exam_storage()
         image_bytes = await storage.download(snap.storage_key)
         image_b64 = base64.b64encode(image_bytes).decode()
+
+        # E3-9: SHA-256 integrity check
+        if snap.frame_sha256 is not None:
+            actual_sha256 = hashlib.sha256(image_bytes).hexdigest()
+            if actual_sha256 != snap.frame_sha256:
+                logger.warning(
+                    "snapshot_integrity_failure",
+                    snapshot_id=snapshot_id,
+                    expected=snap.frame_sha256,
+                    actual=actual_sha256,
+                )
+                snap.integrity_check_passed = False
+                snap.integrity_failure_reason = "sha256_mismatch"
+                snap.analysis_status = SnapshotAnalysis.error
+                event = ProctorEvent(
+                    id=_uuid_module.uuid4(),
+                    session_id=snap.session_id,
+                    event_type="integrity_check_failed",
+                    severity=EventSeverity.medium,
+                    payload={
+                        "expected_sha256": snap.frame_sha256,
+                        "actual_sha256": actual_sha256,
+                    },
+                )
+                db.add(event)
+                await db.commit()
+                return {"error": "integrity_check_failed", "snapshot_id": snapshot_id}
+            snap.integrity_check_passed = True
 
         # Claude Vision — forced tool use
         client = Anthropic(api_key=settings.exam_anthropic_api_key or None)
@@ -96,6 +215,13 @@ async def _analyze_snapshot_async(snapshot_id: str) -> dict:  # type: ignore[typ
         response = client.messages.create(
             model=settings.anthropic_model,
             max_tokens=256,
+            system=[
+                {
+                    "type": "text",
+                    "text": PROCTORING_SYSTEM_PROMPT,
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ],
             tools=[tool_def],  # type: ignore[list-item]
             tool_choice={"type": "tool", "name": "report_proctoring_analysis"},
             messages=[
@@ -122,6 +248,13 @@ async def _analyze_snapshot_async(snapshot_id: str) -> dict:  # type: ignore[typ
                     ],
                 }
             ],
+        )
+        logger.info(
+            "claude_vision_usage",
+            snapshot_id=snapshot_id,
+            input_tokens=response.usage.input_tokens,
+            cache_creation=getattr(response.usage, "cache_creation_input_tokens", 0),
+            cache_read=getattr(response.usage, "cache_read_input_tokens", 0),
         )
 
         tool_block = response.content[0]
@@ -211,27 +344,48 @@ async def _check_heartbeat_async() -> dict:  # type: ignore[type-arg]
     from app.domain.models.proctor import (  # type: ignore[attr-defined]
         EventSeverity,
         ExamSession,
+        NetworkGap,
         ProctorAlert,
         ProctorEvent,
         SessionStatus,
     )
 
-    threshold = datetime.now(UTC) - timedelta(seconds=75)  # 2.5 × heartbeat interval
+    heartbeat_threshold = datetime.now(UTC) - timedelta(seconds=75)  # 2.5 × heartbeat interval
+    grace_cutoff = datetime.now(UTC) - timedelta(
+        seconds=settings.session_reconnect_grace_period_seconds
+    )
 
     async with celery_db() as db:
-        result = await db.execute(
+        # ------------------------------------------------------------------
+        # Branch A — active sessions that missed a heartbeat
+        # ------------------------------------------------------------------
+        active_result = await db.execute(
             select(ExamSession).where(
                 ExamSession.status == SessionStatus.active,
-                ExamSession.last_heartbeat_at < threshold,
+                ExamSession.last_heartbeat_at < heartbeat_threshold,
             )
         )
-        sessions = result.scalars().all()
+        active_sessions = active_result.scalars().all()
+
+        # ------------------------------------------------------------------
+        # Branch B — disconnected sessions past the reconnect grace period
+        # ------------------------------------------------------------------
+        disconnected_result = await db.execute(
+            select(ExamSession).where(
+                ExamSession.status == SessionStatus.disconnected,
+                ExamSession.disconnected_at < grace_cutoff,
+            )
+        )
+        disconnected_sessions = disconnected_result.scalars().all()
 
         flagged = 0
+        expired = 0
+        now = datetime.now(UTC)
+
         r = sync_redis_lib.from_url(settings.redis_url)
         try:
-            for session in sessions:
-                # Idempotency guard: skip if already processed within this 60 s window
+            # --- Branch A: active → disconnected at threshold misses ---
+            for session in active_sessions:
                 lock_key = f"exam:heartbeat_check:{session.id}"
                 if r.exists(lock_key):
                     continue
@@ -240,52 +394,233 @@ async def _check_heartbeat_async() -> dict:  # type: ignore[type-arg]
                 session.consecutive_missed_heartbeats = (
                     session.consecutive_missed_heartbeats or 0
                 ) + 1
-
                 missed = session.consecutive_missed_heartbeats
-                severity = EventSeverity.high if missed >= 3 else EventSeverity.medium
 
-                event = ProctorEvent(
-                    id=_uuid_module.uuid4(),
-                    session_id=session.id,
-                    event_type="heartbeat_missed",
-                    severity=severity,
-                    payload={"count": missed},
-                )
-                db.add(event)
+                if missed >= settings.heartbeat_disconnected_threshold:
+                    session.status = SessionStatus.disconnected
+                    session.disconnected_at = now
 
-                if missed >= 5:
-                    session.status = SessionStatus.expired
-                    session.ended_at = datetime.now(UTC)
-                    session.termination_reason = "heartbeat_timeout"
+                    # Create NetworkGap to start tracking the interruption
+                    gap = NetworkGap(
+                        id=_uuid_module.uuid4(),
+                        session_id=session.id,
+                        disconnected_at=now,
+                        missed_heartbeat_count=missed,
+                        auto_expired=False,
+                    )
+                    db.add(gap)
+
+                    event = ProctorEvent(
+                        id=_uuid_module.uuid4(),
+                        session_id=session.id,
+                        event_type="network_interruption_suspected",
+                        severity=EventSeverity.medium,
+                        payload={"missed_count": missed},
+                    )
+                    db.add(event)
 
                     alert = ProctorAlert(
                         id=_uuid_module.uuid4(),
                         session_id=session.id,
-                        severity=EventSeverity.critical,
-                        message=(f"Session auto-expired: {missed} consecutive missed heartbeats"),
+                        severity=EventSeverity.medium,
+                        message=(
+                            f"Session disconnected: {missed} consecutive missed heartbeats. "
+                            f"Grace period: {settings.session_reconnect_grace_period_seconds}s."
+                        ),
                     )
                     db.add(alert)
 
-                    # Notify proctor via Redis
                     r.publish(
                         f"proctor:session:{session.id}",
                         json.dumps(
                             {
-                                "type": "session_expired",
+                                "type": "session_disconnected",
                                 "session_id": str(session.id),
-                                "reason": "heartbeat_timeout",
                                 "missed_count": missed,
                             }
                         ),
                     )
+                else:
+                    # Still below threshold — just log the miss
+                    event = ProctorEvent(
+                        id=_uuid_module.uuid4(),
+                        session_id=session.id,
+                        event_type="heartbeat_missed",
+                        severity=EventSeverity.medium,
+                        payload={"count": missed},
+                    )
+                    db.add(event)
 
                 flagged += 1
+
+            # --- Branch B: disconnected → expired after grace period ---
+            for session in disconnected_sessions:
+                lock_key = f"exam:grace_expired:{session.id}"
+                if r.exists(lock_key):
+                    continue
+                r.setex(lock_key, 60, "1")
+
+                session.status = SessionStatus.expired
+                session.ended_at = now
+                session.termination_reason = "reconnect_grace_period_expired"
+
+                # Close the open NetworkGap for this session
+                gap_result = await db.execute(
+                    select(NetworkGap).where(
+                        NetworkGap.session_id == session.id,
+                        NetworkGap.reconnected_at.is_(None),
+                    )
+                )
+                open_gap = gap_result.scalars().first()
+                if open_gap and session.disconnected_at:
+                    open_gap.reconnected_at = now
+                    open_gap.auto_expired = True
+                    open_gap.duration_seconds = int(
+                        (now - session.disconnected_at).total_seconds()
+                    )
+
+                event = ProctorEvent(
+                    id=_uuid_module.uuid4(),
+                    session_id=session.id,
+                    event_type="session_auto_expired",
+                    severity=EventSeverity.critical,
+                    payload={"reason": "reconnect_grace_period_expired"},
+                )
+                db.add(event)
+
+                alert = ProctorAlert(
+                    id=_uuid_module.uuid4(),
+                    session_id=session.id,
+                    severity=EventSeverity.critical,
+                    message=(
+                        "Session auto-expired: reconnect grace period exceeded "
+                        f"({settings.session_reconnect_grace_period_seconds}s)."
+                    ),
+                )
+                db.add(alert)
+
+                r.publish(
+                    f"proctor:session:{session.id}",
+                    json.dumps(
+                        {
+                            "type": "session_expired",
+                            "session_id": str(session.id),
+                            "reason": "reconnect_grace_period_expired",
+                        }
+                    ),
+                )
+
+                expired += 1
+
         finally:
             r.close()
 
         await db.commit()
-        logger.info("heartbeat_check_done", checked=len(sessions), flagged=flagged)
-        return {"checked": len(sessions), "flagged": flagged}
+        logger.info(
+            "heartbeat_check_done",
+            active_checked=len(active_sessions),
+            disconnected_checked=len(disconnected_sessions),
+            flagged=flagged,
+            expired=expired,
+        )
+        return {
+            "checked": len(active_sessions),
+            "flagged": flagged,
+            "expired": expired,
+        }
+
+
+# ---------------------------------------------------------------------------
+# Task: check_edge_anomalies  (Celery beat — every 5 min) — E3-14
+# ---------------------------------------------------------------------------
+
+
+@celery_app.task(name="tasks.check_edge_anomalies")
+def check_edge_anomalies() -> dict:  # type: ignore[type-arg]
+    """Detect sessions where edge AI may be tampered with (E3-14).
+
+    Flags sessions where edge clean rate > 98% but server-side violation rate > 20%.
+    """
+    try:
+        return asyncio.run(_check_edge_anomalies_async())
+    except Exception as exc:
+        logger.error("check_edge_anomalies_failed", error=str(exc))
+        return {"error": str(exc)}
+
+
+async def _check_edge_anomalies_async() -> dict:  # type: ignore[type-arg]
+    from sqlalchemy import func as sa_func
+    from sqlalchemy import select as sa_select
+
+    from app.core.database import celery_db
+    from app.domain.models.proctor import (  # type: ignore[attr-defined]
+        EventSeverity,
+        ExamSession,
+        ProctorAlert,
+        ProctorSnapshot,
+        SessionStatus,
+    )
+
+    async with celery_db() as db:
+        # Find active sessions with enough edge data to evaluate
+        active_sessions = (
+            await db.execute(
+                sa_select(ExamSession).where(ExamSession.status == SessionStatus.active)
+            )
+        ).scalars().all()
+
+        flagged_count = 0
+        for session in active_sessions:
+            # Count edge-classified frames
+            edge_total = await db.scalar(
+                sa_select(sa_func.count(ProctorSnapshot.id)).where(
+                    ProctorSnapshot.session_id == session.id,
+                    ProctorSnapshot.edge_verdict.is_not(None),
+                )
+            ) or 0
+            if edge_total < 20:
+                continue  # not enough data
+
+            edge_clean = await db.scalar(
+                sa_select(sa_func.count(ProctorSnapshot.id)).where(
+                    ProctorSnapshot.session_id == session.id,
+                    ProctorSnapshot.edge_verdict == "clean",
+                )
+            ) or 0
+
+            server_flagged = await db.scalar(
+                sa_select(sa_func.count(ProctorSnapshot.id)).where(
+                    ProctorSnapshot.session_id == session.id,
+                    ProctorSnapshot.violation_detected == True,  # noqa: E712
+                    ProctorSnapshot.edge_verdict.is_not(None),
+                )
+            ) or 0
+
+            edge_clean_rate = edge_clean / edge_total if edge_total > 0 else 0
+            server_violation_rate = server_flagged / edge_total if edge_total > 0 else 0
+
+            if edge_clean_rate > 0.98 and server_violation_rate > 0.20:
+                alert = ProctorAlert(
+                    id=_uuid_module.uuid4(),
+                    session_id=session.id,
+                    severity=EventSeverity.critical,
+                    message=(
+                        f"Possible edge model tampering: "
+                        f"edge clean {edge_clean_rate:.0%}, "
+                        f"server violations {server_violation_rate:.0%} on sampled frames"
+                    ),
+                )
+                db.add(alert)
+                flagged_count += 1
+                logger.warning(
+                    "edge_anomaly_detected",
+                    session_id=str(session.id),
+                    edge_clean_rate=edge_clean_rate,
+                    server_violation_rate=server_violation_rate,
+                )
+
+        await db.commit()
+        return {"checked": len(active_sessions), "flagged": flagged_count}
 
 
 # ---------------------------------------------------------------------------
