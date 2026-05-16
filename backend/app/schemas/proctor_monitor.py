@@ -1,4 +1,4 @@
-"""Pydantic V2 schemas for the proctor monitor API — E2-6."""
+"""Pydantic V2 schemas for the proctor monitor API — E2-6, E3-8."""
 
 from __future__ import annotations
 
@@ -7,6 +7,22 @@ from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict
+
+# ---------------------------------------------------------------------------
+# Network gap (offline interval) schema — E3-8
+# ---------------------------------------------------------------------------
+
+
+class NetworkGapSchema(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    session_id: uuid.UUID
+    disconnected_at: datetime
+    reconnected_at: datetime | None = None
+    duration_seconds: int | None = None
+    missed_heartbeat_count: int = 0
+    auto_expired: bool = False
 
 # ---------------------------------------------------------------------------
 # Alert schemas
@@ -84,6 +100,10 @@ class SessionSummarySchema(BaseModel):
     last_heartbeat_at: datetime | None = None
     consecutive_missed_heartbeats: int
     termination_reason: str | None = None
+    # Offline state — E3-8
+    disconnected_at: datetime | None = None
+    total_offline_duration_s: int | None = None
+    offline_event_count: int = 0
     # Enriched at response time
     unacked_alert_count: int = 0
     latest_snapshot_url: str | None = None
@@ -110,6 +130,7 @@ class SessionDetailSchema(BaseModel):
     unacked_alerts: list[ProctorAlertSchema] = []
     recent_events: list[ProctorEventSchema] = []
     recent_snapshots: list[ProctorSnapshotSchema] = []
+    network_gaps: list[NetworkGapSchema] = []
 
 
 # ---------------------------------------------------------------------------

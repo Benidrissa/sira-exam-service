@@ -18,6 +18,7 @@ function relativeTime(iso: string): string {
 function StatusBadge({ status }: { status: SessionSummary["status"] }) {
   const styles: Record<SessionSummary["status"], string> = {
     active: "bg-green-100 text-green-700",
+    disconnected: "bg-amber-100 text-amber-700",
     terminated: "bg-red-100 text-red-700",
     expired: "bg-yellow-100 text-yellow-700",
     completed: "bg-gray-100 text-gray-600",
@@ -72,6 +73,19 @@ function SessionCard({ session }: { session: SessionSummary }) {
             {session.consecutive_missed_heartbeats} missed heartbeat
             {session.consecutive_missed_heartbeats > 1 ? "s" : ""}
           </p>
+        )}
+        {/* Offline / gap badge — E3-8 */}
+        {session.status === "disconnected" && session.disconnected_at && (
+          <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 animate-pulse">
+            Offline since {new Date(session.disconnected_at).toLocaleTimeString()}
+          </span>
+        )}
+        {session.status !== "disconnected" && (session.offline_event_count ?? 0) > 0 && (
+          <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
+            {session.total_offline_duration_s
+              ? `Gap: ${Math.round(session.total_offline_duration_s / 60)}m`
+              : "Network gap"}
+          </span>
         )}
       </div>
 
