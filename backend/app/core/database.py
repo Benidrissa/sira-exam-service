@@ -2,7 +2,7 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 import structlog
-from sqlalchemy import event, text
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.pool import NullPool
@@ -11,11 +11,22 @@ from app.core.config import settings
 
 logger = structlog.get_logger(__name__)
 
+# Use server_settings to set search_path at the protocol level.
+# The event-listener approach (SET search_path via cursor.execute) is unreliable
+# with asyncpg because asyncpg uses binary protocol and prepared statement caching.
+# server_settings is applied before any query and persists for the connection lifetime.
+_CONNECT_ARGS = {
+    "server_settings": {
+        "search_path": f"public,{settings.database_schema}",
+    }
+}
+
 engine = create_async_engine(
     settings.database_url,
     pool_pre_ping=True,
     pool_size=10,
     max_overflow=20,
+    connect_args=_CONNECT_ARGS,
 )
 
 AsyncSessionLocal = async_sessionmaker(
@@ -29,15 +40,6 @@ AsyncSessionLocal = async_sessionmaker(
 
 class Base(DeclarativeBase):
     pass
-
-
-@event.listens_for(engine.sync_engine, "connect")
-def set_search_path(dbapi_connection, connection_record):  # type: ignore[no-untyped-def]
-    cursor = dbapi_connection.cursor()
-    # public first: ENUMs live in public schema, tables live in database_schema.
-    # This ensures type resolution hits public.bankstatus before any exam_svc duplicate.
-    cursor.execute(f"SET search_path TO public, {settings.database_schema}")
-    cursor.close()
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
@@ -60,13 +62,8 @@ async def celery_db():
     because asyncpg connections are bound to the loop that created them.
     NullPool creates/destroys connections per-request, safe across loop boundaries.
     """
-    task_engine = create_async_engine(settings.database_url, poolclass=NullPool)
-    event.listen(
-        task_engine.sync_engine,
-        "connect",
-        lambda conn, _: conn.cursor().execute(
-            f"SET search_path TO public, {settings.database_schema}"
-        ),
+    task_engine = create_async_engine(
+        settings.database_url, poolclass=NullPool, connect_args=_CONNECT_ARGS
     )
     session_factory = async_sessionmaker(
         bind=task_engine, class_=AsyncSession, expire_on_commit=False
