@@ -12,6 +12,7 @@ from app.api.deps import DB, CurrentUser
 from app.domain.models.proctor import ExamSession, ProctorSnapshot, SessionStatus
 from app.domain.services import proctor_session_service
 from app.infrastructure.exam_evidence import (
+    get_offline_frame_upload_url,
     get_reference_frame_upload_url,
     get_snapshot_upload_url,
 )
@@ -20,6 +21,13 @@ from app.schemas.proctor import (
     ConsentResponse,
     ExamSessionResponse,
     HeartbeatResponse,
+    HeartbeatResumeRequest,
+    HeartbeatResumeResponse,
+    OfflineFrameBatchRecordedRequest,
+    OfflineFrameBatchRecordedResponse,
+    OfflineFrameUploadUrlRequest,
+    OfflineFrameUploadUrlResponse,
+    OfflineFrameUploadUrlResponseItem,
     ProctoringEventBatchRequest,
     ProctoringEventBatchResponse,
     ProctoringEventRequest,
@@ -407,3 +415,126 @@ async def record_session_events_batch(
         event_ids.append(event.id)
 
     return ProctoringEventBatchResponse(recorded=len(event_ids), event_ids=event_ids)
+
+
+# ---------------------------------------------------------------------------
+# E3-5: Reconnect after network interruption
+# ---------------------------------------------------------------------------
+
+
+@router.post("/sessions/{session_id}/heartbeat-resume", response_model=HeartbeatResumeResponse)
+async def heartbeat_resume(
+    session_id: uuid.UUID,
+    body: HeartbeatResumeRequest,
+    db: DB,
+    user: CurrentUser,
+    x_session_token: str = Header(..., alias="X-Session-Token"),
+) -> HeartbeatResumeResponse:
+    """Reconnect a disconnected proctoring session after network interruption (FR-3.5)."""
+    matched = await proctor_session_service.verify_session_token(db, raw_token=x_session_token)
+    if matched is None or matched.id != session_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired session token.",
+        )
+    session = await proctor_session_service.resume_session_after_disconnect(
+        db, session_id=session_id, answer_drafts=body.answer_drafts,
+    )
+    return HeartbeatResumeResponse(
+        ok=True,
+        session_id=session.id,
+        reconnected_at=session.last_heartbeat_at or datetime.now(UTC),
+        next_heartbeat_in=30,
+    )
+
+
+@router.post(
+    "/sessions/{session_id}/offline-frames/batch-upload-urls",
+    response_model=OfflineFrameUploadUrlResponse,
+)
+async def offline_frames_batch_upload_urls(
+    session_id: uuid.UUID,
+    body: OfflineFrameUploadUrlRequest,
+    db: DB,
+    user: CurrentUser,
+    x_session_token: str = Header(..., alias="X-Session-Token"),
+) -> OfflineFrameUploadUrlResponse:
+    """Pre-create ProctorSnapshot rows and return presigned PUT URLs for offline frames (FR-3.5)."""
+    if len(body.frames) > 50:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Batch may not exceed 50 frames.",
+        )
+    matched = await proctor_session_service.verify_session_token(db, raw_token=x_session_token)
+    if matched is None or matched.id != session_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired session token.",
+        )
+    session = await _get_session_or_404(db, session_id, _org(user))
+    if session.status != SessionStatus.active:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Session is not active (status={session.status.value}).",
+        )
+
+    items: list[OfflineFrameUploadUrlResponseItem] = []
+    for frame in body.frames:
+        existing_snap = await db.get(ProctorSnapshot, frame.snapshot_id)
+        if existing_snap is None:
+            storage_key = f"snapshots/{session_id}/{frame.snapshot_id}.jpg"
+            snap = ProctorSnapshot(
+                id=frame.snapshot_id,
+                session_id=session_id,
+                storage_key=storage_key,
+                taken_at=frame.taken_at,
+            )
+            db.add(snap)
+        url, key = await get_offline_frame_upload_url(str(session_id), str(frame.snapshot_id))
+        items.append(
+            OfflineFrameUploadUrlResponseItem(
+                snapshot_id=frame.snapshot_id,
+                upload_url=url,
+                storage_key=key,
+            )
+        )
+    await db.commit()
+    return OfflineFrameUploadUrlResponse(urls=items)
+
+
+@router.post(
+    "/sessions/{session_id}/offline-frames/batch-recorded",
+    response_model=OfflineFrameBatchRecordedResponse,
+)
+async def offline_frames_batch_recorded(
+    session_id: uuid.UUID,
+    body: OfflineFrameBatchRecordedRequest,
+    db: DB,
+    user: CurrentUser,
+    x_session_token: str = Header(..., alias="X-Session-Token"),
+) -> OfflineFrameBatchRecordedResponse:
+    """Confirm offline frames uploaded; dispatch analysis tasks (FR-3.5)."""
+    matched = await proctor_session_service.verify_session_token(db, raw_token=x_session_token)
+    if matched is None or matched.id != session_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired session token.",
+        )
+
+    from app.domain.models.proctor import SnapshotAnalysis
+
+    accepted_ids: list[uuid.UUID] = []
+    for frame in body.frames:
+        snap = await db.get(ProctorSnapshot, frame.snapshot_id)
+        if snap is None:
+            continue
+        if snap.analysis_status != SnapshotAnalysis.pending:
+            accepted_ids.append(snap.id)
+            continue
+        if frame.edge_classification == "flagged":
+            analyze_snapshot.apply_async(args=[str(snap.id)], queue="sira_exam_high")
+        elif frame.frame_seq % 10 == 0:
+            analyze_snapshot.apply_async(args=[str(snap.id)], queue="sira_exam_low")
+        accepted_ids.append(snap.id)
+
+    return OfflineFrameBatchRecordedResponse(accepted=len(accepted_ids), snapshot_ids=accepted_ids)
