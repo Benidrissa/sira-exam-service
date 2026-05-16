@@ -42,7 +42,9 @@ export async function apiFetch<T>(
 
   if (!res.ok) {
     const detail = await res.text().catch(() => res.statusText);
-    throw new Error(detail);
+    const err = new Error(detail) as Error & { status: number };
+    err.status = res.status;
+    throw err;
   }
 
   return res.json() as Promise<T>;
@@ -58,7 +60,9 @@ async function apiUpload<T>(path: string, form: FormData): Promise<T> {
   });
   if (!res.ok) {
     const detail = await res.text().catch(() => res.statusText);
-    throw new Error(detail);
+    const err = new Error(detail) as Error & { status: number };
+    err.status = res.status;
+    throw err;
   }
   return res.json() as Promise<T>;
 }

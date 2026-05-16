@@ -6,6 +6,14 @@ import { startAttempt, submitAttempt, startProctoringSession, terminateSession }
 import type { ExamQuestion, StartAttemptResponse } from "@/types/exam";
 import { useLockdownShell } from "@/hooks/useLockdownShell";
 import { useWebcamProctor } from "@/hooks/useWebcamProctor";
+import { Button } from "@/components/ui/button";
+import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
+import { Progress } from "@/components/ui/progress";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import { cn } from "@/lib/utils";
+import { Timer } from "lucide-react";
 
 export default function ExamPlayerPage() {
   const { testId, locale } = useParams<{ testId: string; locale?: string }>();
@@ -54,8 +62,6 @@ export default function ExamPlayerPage() {
         setSession(s);
         if (s.time_limit_minutes) setSecondsLeft(s.time_limit_minutes * 60);
 
-        // Start proctoring session (treat all attempts as remote for now;
-        // a real implementation would check exam.mode from the test payload)
         setIsRemoteExam(true);
         try {
           const ps = await startProctoringSession(s.attempt_id);
@@ -65,10 +71,16 @@ export default function ExamPlayerPage() {
           sessionStorage.setItem("proctor_session_token", ps.session_token);
         } catch (procErr) {
           console.error("Failed to start proctoring session:", procErr);
-          // Do not block the exam — log and continue
         }
       })
-      .catch((e) => setError(String(e)))
+      .catch((e: unknown) => {
+        const httpStatus = (e as { status?: number })?.status;
+        if (httpStatus === 409) {
+          router.push(`/${effectiveLocale}/exams/${testId}/results`);
+        } else {
+          setError(String(e));
+        }
+      })
       .finally(() => setLoading(false));
   }, [testId]);
 
@@ -84,13 +96,12 @@ export default function ExamPlayerPage() {
     setSubmitting(true);
     try {
       const elapsed = Math.round((Date.now() - startTimeRef.current) / 1000);
-      await submitAttempt(session.attempt_id, {
+      const result = await submitAttempt(session.attempt_id, {
         mcq_answers: mcqAnswers,
         dissertation_answers: dissertations,
         time_taken_sec: elapsed,
       });
 
-      // Terminate proctoring session after exam submission
       if (proctoringSessionId) {
         try {
           await terminateSession(proctoringSessionId);
@@ -103,12 +114,16 @@ export default function ExamPlayerPage() {
       }
 
       setSubmitted(true);
-      router.push(`/${effectiveLocale}/exams/${testId}/results`);
+      const params = new URLSearchParams({ attemptId: String(result.id) });
+      if (result.mcq_score != null) params.set("score", String(result.mcq_score));
+      if (result.total_score != null) params.set("total", String(result.total_score));
+      if (result.passed != null) params.set("passed", String(result.passed));
+      router.push(`/${effectiveLocale}/exams/${testId}/results?${params.toString()}`);
     } catch (e) {
       setError(String(e));
       setSubmitting(false);
     }
-  }, [session, mcqAnswers, dissertations, submitting, submitted, router, testId, proctoringSessionId]);
+  }, [session, mcqAnswers, dissertations, submitting, submitted, router, testId, proctoringSessionId, effectiveLocale]);
 
   // Auto-submit when timer hits 0
   useEffect(() => {
@@ -120,111 +135,140 @@ export default function ExamPlayerPage() {
     setMcqAnswers((prev) => ({ ...prev, [questionId]: [idx] }));
   }
 
-  if (loading) return <p className="p-8 text-sm text-gray-500">Starting exam…</p>;
-  if (error) return <p className="p-8 text-sm text-red-600">{error}</p>;
+  if (loading) return (
+    <div className="flex items-center justify-center p-8 gap-2 text-sm text-muted-foreground">
+      <LoadingSpinner className="h-4 w-4" />
+      Starting exam…
+    </div>
+  );
+  if (error) return <p className="p-8 text-sm text-destructive">{error}</p>;
   if (!session) return null;
 
   const fmt = (s: number) =>
     `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+
   const timerColor =
     secondsLeft !== null
       ? secondsLeft < 60
         ? "text-red-600 animate-pulse"
         : secondsLeft < 300
-          ? "text-orange-500"
-          : "text-gray-700"
+          ? "text-amber-500"
+          : "text-foreground"
       : "";
 
+  const answeredCount =
+    Object.keys(mcqAnswers).length +
+    Object.keys(dissertations).filter((k) => dissertations[k]).length;
+  const totalCount = session.questions.length;
+  const progressValue = totalCount > 0 ? (answeredCount / totalCount) * 100 : 0;
+
   return (
-    <main className="max-w-3xl mx-auto p-6 pb-24">
+    <main className="max-w-3xl mx-auto pb-24">
       {/* Sticky header */}
-      <div className="sticky top-0 z-10 bg-white border-b shadow-sm">
-        <div className="flex items-center justify-between py-3 gap-3">
-          <div className="flex flex-col">
-            <h1 className="text-sm font-semibold text-gray-900">Exam</h1>
-            <span className="text-xs text-gray-400">
-              {Object.keys(mcqAnswers).length + Object.keys(dissertations).filter(k => dissertations[k]).length}
-              /{session.questions.length} answered
+      <div className="sticky top-0 z-10 bg-background/95 backdrop-blur shadow-sm border-b">
+        <div className="flex items-center justify-between px-6 py-3 gap-4">
+          {/* Left: title + answered count */}
+          <div className="flex flex-col min-w-0">
+            <span className="text-base font-semibold truncate">Exam</span>
+            <span className="text-xs text-muted-foreground">
+              {answeredCount}/{totalCount} answered
             </span>
           </div>
+
+          {/* Center: timer */}
           {secondsLeft !== null && (
-            <span className={`font-mono text-2xl font-bold tabular-nums ${timerColor}`}>
+            <div className={cn("flex items-center gap-1.5 font-mono text-2xl font-bold tabular-nums", timerColor)}>
+              <Timer className="h-5 w-5 shrink-0" />
               {fmt(secondsLeft)}
-            </span>
+            </div>
           )}
-          <button
+
+          {/* Right: submit button */}
+          <Button
             disabled={submitting || submitted}
             onClick={() => setShowConfirm(true)}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50 transition-colors">
-            {submitting ? "Submitting…" : submitted ? "Submitted ✓" : "Submit"}
-          </button>
+          >
+            {submitting ? (
+              <>
+                <LoadingSpinner className="h-4 w-4" />
+                Submitting…
+              </>
+            ) : submitted ? "Submitted" : "Submit Exam"}
+          </Button>
         </div>
+
         {/* Progress bar */}
-        {session.questions.length > 0 && (
-          <div className="h-0.5 bg-gray-100">
-            <div
-              className="h-0.5 bg-blue-500 transition-all"
-              style={{ width: `${Math.round((Object.keys(mcqAnswers).length + Object.keys(dissertations).filter(k => dissertations[k]).length) / session.questions.length * 100)}%` }}
-            />
+        <Progress value={progressValue} className="rounded-none h-1" />
+      </div>
+
+      <div className="px-6 pt-6 space-y-4">
+        {/* Submit confirmation modal */}
+        {showConfirm && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+            <Card className="w-full max-w-sm shadow-xl">
+              <CardHeader>
+                <CardTitle>Submit Exam?</CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  You have answered {answeredCount} of {totalCount} question{totalCount !== 1 ? "s" : ""}.
+                  This cannot be undone.
+                </p>
+              </CardHeader>
+              <CardFooter className="gap-3 pt-4">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => setShowConfirm(false)}
+                >
+                  Keep Working
+                </Button>
+                <Button
+                  className="flex-1"
+                  onClick={() => { setShowConfirm(false); handleSubmit(); }}
+                >
+                  Submit Now
+                </Button>
+              </CardFooter>
+            </Card>
           </div>
         )}
+
+        {session.questions.length === 0 && (
+          <p className="text-center py-12 text-muted-foreground text-sm">
+            No questions available for this exam.
+          </p>
+        )}
+
+        {session.questions.map((q, i) => (
+          <QuestionBlock
+            key={q.id}
+            index={i + 1}
+            question={q}
+            mcqAnswer={mcqAnswers[q.id] ?? []}
+            dissertationText={dissertations[q.id] ?? ""}
+            submitted={submitted}
+            onMCQSelect={(idx) => selectMCQ(q.id, idx)}
+            onDissertationChange={(text) =>
+              setDissertations((d) => ({ ...d, [q.id]: text }))
+            }
+          />
+        ))}
       </div>
-      <div className="mt-6" />
 
-      {/* Submit confirmation dialog */}
-      {showConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl mx-4">
-            <h2 className="text-lg font-bold text-gray-900">Submit exam?</h2>
-            <p className="mt-2 text-sm text-gray-500">
-              You have answered {Object.keys(mcqAnswers).length} of {session.questions.filter(q => q.question_type === "mcq").length} MCQ questions
-              {session.questions.some(q => q.question_type === "dissertation") && ` and ${Object.keys(dissertations).filter(k => dissertations[k]).length} of ${session.questions.filter(q => q.question_type === "dissertation").length} written questions`}.
-              This cannot be undone.
-            </p>
-            <div className="mt-5 flex gap-3">
-              <button onClick={() => setShowConfirm(false)} className="flex-1 rounded-xl border border-gray-200 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
-                Keep working
-              </button>
-              <button
-                onClick={() => { setShowConfirm(false); handleSubmit(); }}
-                className="flex-1 rounded-xl bg-blue-600 py-2 text-sm font-semibold text-white hover:bg-blue-700">
-                Submit now
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-
-      {session.questions.length === 0 && (
-        <p className="text-center py-12 text-gray-400 text-sm">No questions available for this exam.</p>
-      )}
-
-      {session.questions.map((q, i) => (
-        <QuestionBlock
-          key={q.id}
-          index={i + 1}
-          question={q}
-          mcqAnswer={mcqAnswers[q.id] ?? []}
-          dissertationText={dissertations[q.id] ?? ""}
-          submitted={submitted}
-          onMCQSelect={(idx) => selectMCQ(q.id, idx)}
-          onDissertationChange={(text) =>
-            setDissertations((d) => ({ ...d, [q.id]: text }))
-          }
-        />
-      ))}
-
-      {/* "You are being recorded" webcam badge — only shown when proctoring is active */}
+      {/* Webcam proctoring badge */}
       {isRemoteExam && proctoringSessionId && (
-        <video
-          ref={videoRef}
-          autoPlay
-          muted
-          playsInline
-          className="fixed bottom-4 right-4 w-32 h-24 rounded-lg border-2 border-green-500 z-50 object-cover"
-          aria-label="Webcam proctoring feed"
-        />
+        <div className="fixed bottom-4 right-4 z-50 rounded-xl border-2 border-emerald-500 overflow-hidden shadow-lg">
+          <video
+            ref={videoRef}
+            autoPlay
+            muted
+            playsInline
+            className="w-32 h-24 object-cover"
+            aria-label="Webcam proctoring feed"
+          />
+          <span className="absolute top-1.5 right-1.5 rounded-sm bg-red-600 px-1 py-0.5 text-[10px] font-bold text-white leading-none">
+            REC
+          </span>
+        </div>
       )}
     </main>
   );
@@ -248,54 +292,69 @@ function QuestionBlock({
   onDissertationChange: (text: string) => void;
 }) {
   return (
-    <div className="mb-8 rounded-lg border bg-white shadow-sm p-6 space-y-4">
-      <div className="flex items-center gap-2">
-        <span className="rounded bg-gray-100 px-2 py-0.5 text-xs font-mono text-gray-500">Q{index}</span>
-        <span
-          className={`rounded px-2 py-0.5 text-xs font-medium
-          ${question.question_type === "mcq" ? "bg-blue-100 text-blue-700" : "bg-purple-100 text-purple-700"}`}>
-          {question.question_type.toUpperCase()}
-        </span>
-      </div>
-      {question.title && <p className="font-medium text-sm">{question.title}</p>}
-      <p className="text-sm text-gray-700">{question.description}</p>
-
-      {question.question_type === "mcq" && question.options && (
-        <div className="space-y-2">
-          {question.options.map((opt, idx) => {
-            const selected = mcqAnswer.includes(idx);
-            return (
-              <label
-                key={idx}
-                className={`flex items-center gap-3 rounded border p-3 cursor-pointer transition
-                  ${selected ? "border-blue-400 bg-blue-50" : "border-gray-200 hover:bg-gray-50"}
-                  ${submitted ? "cursor-default" : ""}`}>
-                <input
-                  type="radio"
-                  name={`q-${question.id}`}
-                  disabled={submitted}
-                  checked={selected}
-                  onChange={() => onMCQSelect(idx)}
-                  className="accent-blue-600"
-                />
-                <span className="font-mono text-xs text-gray-400">{opt.label}.</span>
-                <span className="text-sm">{opt.text}</span>
-              </label>
-            );
-          })}
+    <Card className="mb-4">
+      <CardHeader>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Badge variant={question.question_type === "mcq" ? "info" : "purple"}>
+            {question.question_type.toUpperCase()}
+          </Badge>
+          <Badge variant="secondary" className="font-mono">
+            Q{index}
+          </Badge>
         </div>
-      )}
+        {question.title && (
+          <p className="text-sm font-medium text-foreground">{question.title}</p>
+        )}
+        <CardTitle className="text-sm font-normal text-muted-foreground leading-relaxed">
+          {question.description}
+        </CardTitle>
+      </CardHeader>
 
-      {question.question_type === "dissertation" && (
-        <textarea
-          rows={6}
-          disabled={submitted}
-          placeholder="Write your answer here…"
-          className="w-full rounded border border-gray-300 p-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-y disabled:bg-gray-50"
-          value={dissertationText}
-          onChange={(e) => onDissertationChange(e.target.value)}
-        />
-      )}
-    </div>
+      <CardContent>
+        {question.question_type === "mcq" && question.options && (
+          <div className="space-y-2">
+            {question.options.map((opt, idx) => {
+              const selected = mcqAnswer.includes(idx);
+              return (
+                <div
+                  key={idx}
+                  onClick={() => !submitted && onMCQSelect(idx)}
+                  className={cn(
+                    "flex items-center gap-3 rounded-lg border p-3 cursor-pointer transition-colors",
+                    selected
+                      ? "border-primary bg-primary/5"
+                      : "border-border hover:bg-muted",
+                    submitted && "cursor-default",
+                  )}
+                >
+                  <input
+                    type="radio"
+                    name={`q-${question.id}`}
+                    disabled={submitted}
+                    checked={selected}
+                    onChange={() => onMCQSelect(idx)}
+                    className="accent-primary shrink-0"
+                  />
+                  <Badge variant="outline" className="font-mono shrink-0">
+                    {opt.label}
+                  </Badge>
+                  <span className="text-sm">{opt.text}</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {question.question_type === "dissertation" && (
+          <Textarea
+            rows={8}
+            disabled={submitted}
+            placeholder="Write your answer here…"
+            value={dissertationText}
+            onChange={(e) => onDissertationChange(e.target.value)}
+          />
+        )}
+      </CardContent>
+    </Card>
   );
 }

@@ -1,152 +1,146 @@
 "use client";
 
-import { useState } from "react";
-import { useParams } from "next/navigation";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getDissertationReview, patchHumanScore } from "@/lib/api";
-import type { DissertationAnswer } from "@/types/exam";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { Suspense } from "react";
+import { Button } from "@/components/ui/button";
+import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { CheckCircle2, Clock, FileText, Home, Info } from "lucide-react";
 
-export default function DissertationGradingPage() {
-  const { testId } = useParams<{ testId: string }>();
-  const qc = useQueryClient();
+function ResultsContent() {
+  const { testId: _testId, locale } = useParams<{ testId: string; locale?: string }>();
+  const effectiveLocale = (locale as string) ?? "fr";
+  const router = useRouter();
+  const searchParams = useSearchParams();
 
-  const hasPending = (answers: DissertationAnswer[]) =>
-    answers.some((a) => a.status === "pending");
+  const attemptId = searchParams.get("attemptId");
+  const scoreStr = searchParams.get("score");
+  const totalStr = searchParams.get("total");
 
-  const { data: answers, isLoading, error } = useQuery({
-    queryKey: ["dissertation-review", testId],
-    queryFn: () => getDissertationReview(testId),
-    refetchInterval: (query) =>
-      query.state.data && hasPending(query.state.data) ? 30_000 : false,
-    staleTime: 10_000,
-  });
+  const score = scoreStr != null ? parseFloat(scoreStr) : null;
+  const total = totalStr != null ? parseFloat(totalStr) : null;
 
-  if (isLoading) return <p className="p-8 text-sm text-gray-500">Loading review queue…</p>;
-  if (error) return <p className="p-8 text-sm text-red-600">{String(error)}</p>;
-  if (!answers || answers.length === 0)
-    return <p className="p-8 text-sm text-gray-400">No dissertation answers pending review.</p>;
+  if (!attemptId) {
+    return (
+      <div className="flex justify-center mt-20">
+        <Card className="w-full max-w-md text-center">
+          <CardHeader>
+            <CardTitle>No results found</CardTitle>
+            <CardDescription>
+              This exam has not been submitted yet, or your session has expired.
+            </CardDescription>
+          </CardHeader>
+          <CardFooter className="justify-center">
+            <Button onClick={() => router.push(`/${effectiveLocale}/`)}>
+              <Home className="mr-2 h-4 w-4" />
+              Return Home
+            </Button>
+          </CardFooter>
+        </Card>
+      </div>
+    );
+  }
 
   return (
-    <main className="max-w-3xl mx-auto p-8 space-y-6">
-      <h1 className="text-2xl font-bold">Dissertation Grading</h1>
-      <p className="text-sm text-gray-500">
-        {answers.length} answer{answers.length !== 1 ? "s" : ""} pending review.
-        {hasPending(answers) && " Auto-refreshing every 30 s while AI is grading."}
-      </p>
-      {answers.map((answer) => (
-        <AnswerCard key={answer.id} answer={answer} onUpdated={(updated) => {
-          qc.setQueryData<DissertationAnswer[]>(
-            ["dissertation-review", testId],
-            (old) => old?.map((a) => a.id === updated.id ? updated : a) ?? [],
-          );
-        }} />
-      ))}
+    <main className="max-w-2xl mx-auto p-8 space-y-6">
+      {/* Header — neutral, no pass/fail yet */}
+      <div className="flex items-center gap-3">
+        <CheckCircle2 className="h-8 w-8 text-emerald-500 shrink-0" />
+        <div>
+          <h1 className="text-2xl font-bold">Exam Submitted</h1>
+          <p className="text-sm text-muted-foreground">
+            Your answers have been recorded successfully.
+          </p>
+        </div>
+        <Badge variant="warning" className="ml-auto shrink-0">
+          Awaiting review
+        </Badge>
+      </div>
+
+      {/* Notice: final result pending */}
+      <Alert>
+        <Info className="h-4 w-4" />
+        <AlertDescription>
+          Your final result will be communicated by your teacher once all grading — including
+          the review of written answers — is complete.
+        </AlertDescription>
+      </Alert>
+
+      {/* MCQ score — automatic, preliminary */}
+      {score != null && (
+        <Card>
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base">Automatic scoring — MCQ</CardTitle>
+              <Badge variant="secondary" className="text-xs">Preliminary</Badge>
+            </div>
+            <CardDescription>
+              Multiple-choice questions are scored automatically.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-end gap-2">
+              <span className="text-4xl font-bold tabular-nums">{score}</span>
+              {total != null && (
+                <span className="text-lg text-muted-foreground mb-1">/ {total} questions</span>
+              )}
+            </div>
+            {total != null && total > 0 && (
+              <p className="mt-2 text-sm text-muted-foreground">
+                {Math.round((score / total) * 100)}% correct
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Dissertation — pending human review */}
+      <Card>
+        <CardHeader className="flex-row items-center gap-3 space-y-0">
+          <FileText className="h-5 w-5 text-primary shrink-0" />
+          <div>
+            <CardTitle className="text-base">Written answers — Teacher review</CardTitle>
+            <CardDescription>
+              Your essays are first graded by AI, then reviewed and validated by your teacher.
+            </CardDescription>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <div className="flex items-center gap-2">
+            <Clock className="h-4 w-4 text-amber-500" />
+            <Badge variant="warning">Pending teacher review</Badge>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Your teacher will communicate your written scores and feedback directly.
+            This is the authoritative grading step — the final result depends on it.
+          </p>
+        </CardContent>
+      </Card>
+
+      <Separator />
+
+      <div className="flex justify-center">
+        <Button variant="outline" onClick={() => router.push(`/${effectiveLocale}/`)}>
+          <Home className="mr-2 h-4 w-4" />
+          Return Home
+        </Button>
+      </div>
     </main>
   );
 }
 
-function AnswerCard({ answer, onUpdated }: {
-  answer: DissertationAnswer;
-  onUpdated: (a: DissertationAnswer) => void;
-}) {
-  const [humanScore, setHumanScore] = useState<string>(
-    answer.human_score !== null ? String(answer.human_score) : "",
-  );
-  const [humanFeedback, setHumanFeedback] = useState(answer.human_feedback ?? "");
-  const [saveError, setSaveError] = useState<string | null>(null);
-
-  const mutation = useMutation({
-    mutationFn: () => patchHumanScore(answer.id, {
-      human_score: Number(humanScore),
-      human_feedback: humanFeedback,
-    }),
-    onSuccess: (updated) => { onUpdated(updated); setSaveError(null); },
-    onError: (e) => setSaveError(String(e)),
-  });
-
-  const statusColor = {
-    pending: "bg-yellow-100 text-yellow-700",
-    ai_scored: "bg-blue-100 text-blue-700",
-    human_reviewed: "bg-green-100 text-green-700",
-  }[answer.status];
-
+export default function ResultsPage() {
   return (
-    <div className="rounded-lg border bg-white shadow-sm overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center justify-between border-b bg-gray-50 px-4 py-3">
-        <span className="text-xs text-gray-500 font-mono">Answer {answer.id.slice(0, 8)}</span>
-        <span className={`rounded px-2 py-0.5 text-xs font-medium ${statusColor}`}>
-          {answer.status.replace("_", " ")}
-        </span>
-      </div>
-
-      {/* Student answer */}
-      <div className="p-4 border-b">
-        <p className="text-xs font-medium text-gray-400 mb-1">Student answer</p>
-        <p className="text-sm whitespace-pre-wrap text-gray-700">{answer.answer_text}</p>
-      </div>
-
-      {/* AI grading */}
-      {answer.status === "pending" && (
-        <div className="p-4 border-b text-sm text-gray-400 flex items-center gap-2">
-          <div className="h-4 w-4 animate-spin rounded-full border-2 border-blue-200 border-t-blue-500" />
-          AI grading in progress…
+    <Suspense
+      fallback={
+        <div className="flex justify-center mt-20 text-sm text-muted-foreground">
+          Loading results…
         </div>
-      )}
-      {answer.ai_score !== null && (
-        <div className="p-4 border-b space-y-2">
-          <div className="flex items-center gap-3">
-            <p className="text-xs font-medium text-gray-400">AI Score</p>
-            <span className="rounded bg-blue-100 px-2 py-0.5 text-sm font-bold text-blue-700">
-              {answer.ai_score.toFixed(1)} / 100
-            </span>
-          </div>
-          {answer.criterion_scores && Object.keys(answer.criterion_scores).length > 0 && (
-            <div className="space-y-1">
-              <p className="text-xs text-gray-400">Criterion breakdown</p>
-              {Object.entries(answer.criterion_scores).map(([k, v]) => (
-                <div key={k} className="flex items-center justify-between text-xs">
-                  <span className="text-gray-600">{k}</span>
-                  <span className="font-medium">{v}</span>
-                </div>
-              ))}
-            </div>
-          )}
-          {answer.ai_feedback && (
-            <div>
-              <p className="text-xs font-medium text-gray-400 mb-1">AI Feedback</p>
-              <p className="text-sm text-gray-600 italic">{answer.ai_feedback}</p>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Human override */}
-      <div className="p-4 space-y-3">
-        <p className="text-xs font-medium text-gray-500">Teacher override</p>
-        <div className="flex items-center gap-3">
-          <label className="text-xs text-gray-500">Score (0–100)</label>
-          <input type="number" min={0} max={100} step={0.5}
-            className="w-24 rounded border border-gray-300 px-2 py-1 text-sm"
-            value={humanScore}
-            onChange={(e) => setHumanScore(e.target.value)} />
-          {answer.human_score !== null && (
-            <span className="text-xs text-green-600">Current: {answer.human_score}</span>
-          )}
-        </div>
-        <textarea rows={3} placeholder="Feedback for student…"
-          className="w-full rounded border border-gray-300 px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-400"
-          value={humanFeedback}
-          onChange={(e) => setHumanFeedback(e.target.value)} />
-        {saveError && <p className="text-xs text-red-500">{saveError}</p>}
-        <button
-          disabled={mutation.isPending || !humanScore}
-          onClick={() => mutation.mutate()}
-          className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
-          {mutation.isPending ? "Saving…" :
-           answer.status === "human_reviewed" ? "Update Grade" : "Submit Grade"}
-        </button>
-      </div>
-    </div>
+      }
+    >
+      <ResultsContent />
+    </Suspense>
   );
 }

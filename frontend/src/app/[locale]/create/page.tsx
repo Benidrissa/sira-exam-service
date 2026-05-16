@@ -10,8 +10,43 @@ import {
   getGenerationStatus,
 } from "@/lib/api";
 import type { ExamSource, ScenarioBrief } from "@/types/exam";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardContent,
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Progress } from "@/components/ui/progress";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
+import { cn } from "@/lib/utils";
+import {
+  Plus,
+  FileText,
+  AlertCircle,
+  Sparkles,
+  CheckCircle,
+  X,
+} from "lucide-react";
 
 type Step = 0 | 1 | 2 | 3;
+
+const STEP_LABELS = ["Exam Info", "Sources", "Scenarios", "Generate"];
+
+const SOURCE_STATUS_VARIANT: Record<
+  ExamSource["extraction_status"],
+  "warning" | "info" | "success" | "destructive"
+> = {
+  pending: "warning",
+  extracting: "info",
+  done: "success",
+  failed: "destructive",
+};
 
 export default function CreateExamPage() {
   const router = useRouter();
@@ -43,14 +78,25 @@ export default function CreateExamPage() {
   const [genError, setGenError] = useState<string | null>(null);
   const [polling, setPolling] = useState(false);
 
-  const go = (s: Step) => { setError(null); setStep(s); };
+  const go = (s: Step) => {
+    setError(null);
+    setStep(s);
+  };
 
   // ── Step 0 → create bank ──────────────────────────────────────────────────
   async function handleCreateBank() {
-    if (!titleFr.trim()) { setError("Title is required"); return; }
+    if (!titleFr.trim()) {
+      setError("Title is required");
+      return;
+    }
     setLoading(true);
     try {
-      const bank = await createExamBank({ title_fr: titleFr, subject, language, passing_score: passingScore });
+      const bank = await createExamBank({
+        title_fr: titleFr,
+        subject,
+        language,
+        passing_score: passingScore,
+      });
       setBankId(bank.id);
       go(1);
     } catch (e) {
@@ -84,47 +130,64 @@ export default function CreateExamPage() {
   function removeScenario(i: number) {
     setScenarios((s) => s.filter((_, idx) => idx !== i));
   }
-  function updateScenario(i: number, field: keyof ScenarioBrief, value: string | number) {
-    setScenarios((s) => s.map((sc, idx) => idx === i ? { ...sc, [field]: value } : sc));
+  function updateScenario(
+    i: number,
+    field: keyof ScenarioBrief,
+    value: string | number
+  ) {
+    setScenarios((s) =>
+      s.map((sc, idx) => (idx === i ? { ...sc, [field]: value } : sc))
+    );
   }
 
   // ── Step 3 → generate ────────────────────────────────────────────────────
-  const pollStatus = useCallback(async (bId: string) => {
-    let attempt = 0;
-    const max = 40; // 40 × 5s = 200s
-    setPolling(true);
-    setGenStatus("Enqueueing generation…");
-    while (attempt < max) {
-      await new Promise((r) => setTimeout(r, 5000));
-      attempt++;
-      try {
-        const s = await getGenerationStatus(bId);
-        if (s.status === "review") {
-          setPolling(false);
-          setGenStatus("Done! Redirecting to review board…");
-          setTimeout(() => router.push(`/${locale}/banks/${bId}/review`), 1500);
-          return;
+  const pollStatus = useCallback(
+    async (bId: string) => {
+      let attempt = 0;
+      const max = 40; // 40 × 5s = 200s
+      setPolling(true);
+      setGenStatus("Enqueueing generation…");
+      while (attempt < max) {
+        await new Promise((r) => setTimeout(r, 5000));
+        attempt++;
+        try {
+          const s = await getGenerationStatus(bId);
+          if (s.status === "review") {
+            setPolling(false);
+            setGenStatus("Done! Redirecting to review board…");
+            setTimeout(() => router.push(`/${locale}/banks/${bId}/review`), 1500);
+            return;
+          }
+          if (s.status === "draft" && s.error_message) {
+            setGenError(s.error_message);
+            setPolling(false);
+            return;
+          }
+          setGenStatus(`Generating… (${s.progress_pct ?? 0}%)`);
+        } catch {
+          /* transient network */
         }
-        if (s.status === "draft" && s.error_message) {
-          setGenError(s.error_message);
-          setPolling(false);
-          return;
-        }
-        setGenStatus(`Generating… (${s.progress_pct ?? 0}%)`);
-      } catch { /* transient network */ }
-    }
-    setPolling(false);
-    setGenError("Timed out after 200 s — check logs.");
-  }, [router]);
+      }
+      setPolling(false);
+      setGenError("Timed out after 200 s — check logs.");
+    },
+    [router, locale]
+  );
 
   async function handleGenerate() {
     if (!bankId) return;
     const filled = scenarios.filter((s) => s.title.trim());
-    if (!filled.length) { setError("Add at least one scenario"); return; }
+    if (!filled.length) {
+      setError("Add at least one scenario");
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
-      await triggerGeneration(bankId, { test_objective: objective, scenarios_brief: filled });
+      await triggerGeneration(bankId, {
+        test_objective: objective,
+        scenarios_brief: filled,
+      });
       go(3);
       pollStatus(bankId);
     } catch (e) {
@@ -135,163 +198,329 @@ export default function CreateExamPage() {
   }
 
   // ── UI ────────────────────────────────────────────────────────────────────
-  const steps = ["Exam Info", "Sources", "Scenarios", "Generate"];
+  const progressValue = (step / (STEP_LABELS.length - 1)) * 100;
 
   return (
-    <main className="max-w-2xl mx-auto p-8">
-      {/* Progress bar */}
-      <div className="flex items-center gap-2 mb-8">
-        {steps.map((label, i) => (
-          <div key={i} className="flex items-center gap-2 flex-1 last:flex-none">
-            <div className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold
-              ${i <= step ? "bg-blue-600 text-white" : "bg-gray-200 text-gray-500"}`}>
-              {i + 1}
+    <main className="max-w-2xl mx-auto px-4 py-8">
+      {/* Step progress */}
+      <div className="mb-8 space-y-3">
+        <Progress value={progressValue} />
+        <div className="flex justify-between">
+          {STEP_LABELS.map((label, i) => (
+            <div key={i} className="flex flex-col items-center gap-1">
+              <div
+                className={cn(
+                  "flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold border-2 transition-colors",
+                  i < step
+                    ? "bg-primary border-primary text-primary-foreground"
+                    : i === step
+                    ? "bg-primary border-primary text-primary-foreground"
+                    : "bg-background border-border text-muted-foreground"
+                )}
+              >
+                {i < step ? <CheckCircle className="h-4 w-4" /> : i + 1}
+              </div>
+              <span
+                className={cn(
+                  "hidden sm:block text-xs",
+                  i === step
+                    ? "font-semibold text-foreground"
+                    : "text-muted-foreground"
+                )}
+              >
+                {label}
+              </span>
             </div>
-            <span className={`hidden sm:inline text-sm ${i === step ? "font-medium" : "text-gray-400"}`}>
-              {label}
-            </span>
-            {i < steps.length - 1 && <div className={`flex-1 h-0.5 ${i < step ? "bg-blue-600" : "bg-gray-200"}`} />}
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
 
-      {error && <div className="mb-4 rounded border border-red-300 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+      {/* Global error */}
+      {error && (
+        <Alert variant="destructive" className="mb-5">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Error</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
 
-      {/* Step 0: Exam Info */}
+      {/* ── Step 0: Exam Info ── */}
       {step === 0 && (
-        <div className="space-y-4">
+        <div className="space-y-5">
           <h2 className="text-xl font-semibold">Exam Info</h2>
-          <label className="block">
-            <span className="text-sm font-medium">Title (FR) *</span>
-            <input className="mt-1 w-full rounded border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              value={titleFr} onChange={(e) => setTitleFr(e.target.value)} placeholder="e.g. Examen de médecine" />
-          </label>
-          <label className="block">
-            <span className="text-sm font-medium">Subject</span>
-            <input className="mt-1 w-full rounded border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="e.g. Pharmacologie" />
-          </label>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="title-fr">Title (FR) *</Label>
+            <Input
+              id="title-fr"
+              value={titleFr}
+              onChange={(e) => setTitleFr(e.target.value)}
+              placeholder="e.g. Examen de médecine"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="subject">Subject</Label>
+            <Input
+              id="subject"
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+              placeholder="e.g. Pharmacologie"
+            />
+          </div>
+
           <div className="flex gap-4">
-            <label className="flex-1 block">
-              <span className="text-sm font-medium">Language</span>
-              <select className="mt-1 w-full rounded border border-gray-300 px-3 py-2 text-sm"
-                value={language} onChange={(e) => setLanguage(e.target.value)}>
+            <div className="flex-1 space-y-1.5">
+              <Label htmlFor="language">Language</Label>
+              <select
+                id="language"
+                value={language}
+                onChange={(e) => setLanguage(e.target.value)}
+                className="flex h-9 w-full rounded-lg border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+              >
                 <option value="fr">Français</option>
                 <option value="en">English</option>
               </select>
-            </label>
-            <label className="flex-1 block">
-              <span className="text-sm font-medium">Passing score (%)</span>
-              <input type="number" min={0} max={100}
-                className="mt-1 w-full rounded border border-gray-300 px-3 py-2 text-sm"
-                value={passingScore} onChange={(e) => setPassingScore(Number(e.target.value))} />
-            </label>
+            </div>
+            <div className="flex-1 space-y-1.5">
+              <Label htmlFor="passing-score">Passing score (%)</Label>
+              <Input
+                id="passing-score"
+                type="number"
+                min={0}
+                max={100}
+                value={passingScore}
+                onChange={(e) => setPassingScore(Number(e.target.value))}
+              />
+            </div>
           </div>
-          <button disabled={loading}
+
+          <Button
+            className="w-full"
+            disabled={loading}
             onClick={handleCreateBank}
-            className="w-full rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
-            {loading ? "Creating…" : "Next: Upload Sources →"}
-          </button>
+          >
+            {loading ? (
+              <>
+                <LoadingSpinner size="sm" />
+                Creating…
+              </>
+            ) : (
+              "Next: Upload Sources →"
+            )}
+          </Button>
         </div>
       )}
 
-      {/* Step 1: Sources */}
+      {/* ── Step 1: Sources ── */}
       {step === 1 && (
-        <div className="space-y-4">
+        <div className="space-y-5">
           <h2 className="text-xl font-semibold">Upload Source Documents</h2>
-          <p className="text-sm text-gray-500">Upload PDF or Word files used as exam reference material.</p>
-          <label className="flex cursor-pointer items-center gap-2 rounded border-2 border-dashed border-gray-300 p-4 hover:border-blue-400">
-            <span className="text-sm text-gray-600">{uploadingFile ? "Uploading…" : "Click to upload PDF / Word"}</span>
-            <input type="file" accept=".pdf,.doc,.docx" className="hidden"
-              disabled={uploadingFile} onChange={handleUploadFile} />
+          <p className="text-sm text-muted-foreground">
+            Upload PDF or Word files used as exam reference material.
+          </p>
+
+          {/* Upload zone */}
+          <label className="flex cursor-pointer flex-col items-center gap-3 rounded-xl border-2 border-dashed border-border p-8 text-center transition-colors hover:border-primary/50 hover:bg-muted/30">
+            <FileText className="h-8 w-8 text-muted-foreground" />
+            <div>
+              <p className="text-sm font-medium">
+                {uploadingFile ? "Uploading…" : "Click to upload PDF or Word"}
+              </p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                .pdf, .doc, .docx
+              </p>
+            </div>
+            <input
+              type="file"
+              accept=".pdf,.doc,.docx"
+              className="hidden"
+              disabled={uploadingFile}
+              onChange={handleUploadFile}
+            />
           </label>
+
+          {/* Source list */}
           {sources.length > 0 && (
-            <ul className="space-y-2">
+            <div className="space-y-2">
               {sources.map((s) => (
-                <li key={s.id} className="flex items-center gap-3 rounded border bg-gray-50 px-3 py-2 text-sm">
-                  <span className="flex-1 truncate">{s.filename}</span>
-                  <span className={`rounded px-2 py-0.5 text-xs font-medium
-                    ${s.extraction_status === "done" ? "bg-green-100 text-green-700" :
-                      s.extraction_status === "failed" ? "bg-red-100 text-red-700" :
-                      "bg-yellow-100 text-yellow-700"}`}>
-                    {s.extraction_status}
-                  </span>
-                </li>
+                <Card key={s.id}>
+                  <CardContent className="flex items-center gap-3 py-3 px-4">
+                    <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    <span className="flex-1 truncate text-sm">{s.filename}</span>
+                    <Badge variant={SOURCE_STATUS_VARIANT[s.extraction_status]}>
+                      {s.extraction_status}
+                    </Badge>
+                  </CardContent>
+                </Card>
               ))}
-            </ul>
+            </div>
           )}
+
           <div className="flex gap-3">
-            <button onClick={() => go(0)} className="flex-1 rounded border px-4 py-2 text-sm hover:bg-gray-50">← Back</button>
-            <button onClick={() => go(2)} className="flex-1 rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
+            <Button variant="outline" className="flex-1" onClick={() => go(0)}>
+              ← Back
+            </Button>
+            <Button className="flex-1" onClick={() => go(2)}>
               Next: Scenarios →
-            </button>
+            </Button>
           </div>
         </div>
       )}
 
-      {/* Step 2: Scenarios */}
+      {/* ── Step 2: Scenarios ── */}
       {step === 2 && (
-        <div className="space-y-4">
+        <div className="space-y-5">
           <h2 className="text-xl font-semibold">Configure Scenarios</h2>
-          <label className="block">
-            <span className="text-sm font-medium">Test Objective *</span>
-            <textarea rows={2}
-              className="mt-1 w-full rounded border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              value={objective} onChange={(e) => setObjective(e.target.value)}
-              placeholder="e.g. Assess understanding of infectious disease management" />
-          </label>
-          {scenarios.map((sc, i) => (
-            <div key={i} className="rounded border bg-gray-50 p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">Scenario {i + 1}</span>
-                {scenarios.length > 1 && (
-                  <button onClick={() => removeScenario(i)} className="text-xs text-red-500 hover:underline">Remove</button>
-                )}
-              </div>
-              <input className="w-full rounded border border-gray-300 px-3 py-1.5 text-sm"
-                placeholder="Scenario title" value={sc.title}
-                onChange={(e) => updateScenario(i, "title", e.target.value)} />
-              <input className="w-full rounded border border-gray-300 px-3 py-1.5 text-sm"
-                placeholder="Objective (optional)" value={sc.objective}
-                onChange={(e) => updateScenario(i, "objective", e.target.value)} />
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-500">Questions:</span>
-                <input type="number" min={1} max={20}
-                  className="w-20 rounded border border-gray-300 px-2 py-1 text-sm"
-                  value={sc.question_count}
-                  onChange={(e) => updateScenario(i, "question_count", Number(e.target.value))} />
-              </div>
-            </div>
-          ))}
-          <button onClick={addScenario} className="w-full rounded border-2 border-dashed border-gray-300 py-2 text-sm text-gray-500 hover:border-blue-400">
-            + Add Scenario
+
+          <div className="space-y-1.5">
+            <Label htmlFor="test-objective">Test Objective *</Label>
+            <Textarea
+              id="test-objective"
+              rows={2}
+              value={objective}
+              onChange={(e) => setObjective(e.target.value)}
+              placeholder="e.g. Assess understanding of infectious disease management"
+            />
+          </div>
+
+          {/* Scenario cards */}
+          <div className="space-y-3">
+            {scenarios.map((sc, i) => (
+              <Card key={i}>
+                <CardHeader className="pb-2">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-sm">Scenario {i + 1}</CardTitle>
+                    {scenarios.length > 1 && (
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        onClick={() => removeScenario(i)}
+                        className="text-muted-foreground hover:text-destructive"
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-3 pt-1">
+                  <div className="space-y-1.5">
+                    <Label htmlFor={`sc-title-${i}`}>Title</Label>
+                    <Input
+                      id={`sc-title-${i}`}
+                      placeholder="Scenario title"
+                      value={sc.title}
+                      onChange={(e) => updateScenario(i, "title", e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor={`sc-obj-${i}`}>Objective (optional)</Label>
+                    <Input
+                      id={`sc-obj-${i}`}
+                      placeholder="Objective"
+                      value={sc.objective}
+                      onChange={(e) =>
+                        updateScenario(i, "objective", e.target.value)
+                      }
+                    />
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <Label htmlFor={`sc-count-${i}`} className="text-xs shrink-0">
+                      Questions:
+                    </Label>
+                    <Input
+                      id={`sc-count-${i}`}
+                      type="number"
+                      min={1}
+                      max={20}
+                      className="w-20"
+                      value={sc.question_count}
+                      onChange={(e) =>
+                        updateScenario(i, "question_count", Number(e.target.value))
+                      }
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          {/* Add scenario button */}
+          <button
+            type="button"
+            onClick={addScenario}
+            className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border py-3 text-sm font-medium text-muted-foreground transition-colors hover:border-primary/50 hover:text-foreground"
+          >
+            <Plus className="h-4 w-4" />
+            Add Scenario
           </button>
+
           <div className="flex gap-3">
-            <button onClick={() => go(1)} className="flex-1 rounded border px-4 py-2 text-sm hover:bg-gray-50">← Back</button>
-            <button disabled={loading} onClick={handleGenerate}
-              className="flex-1 rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
-              {loading ? "Enqueuing…" : "Generate Exam →"}
-            </button>
+            <Button variant="outline" className="flex-1" onClick={() => go(1)}>
+              ← Back
+            </Button>
+            <Button
+              className="flex-1"
+              disabled={loading}
+              onClick={handleGenerate}
+            >
+              {loading ? (
+                <>
+                  <LoadingSpinner size="sm" />
+                  Enqueuing…
+                </>
+              ) : (
+                <>
+                  <Sparkles className="h-4 w-4" />
+                  Generate Exam
+                </>
+              )}
+            </Button>
           </div>
         </div>
       )}
 
-      {/* Step 3: Polling */}
+      {/* ── Step 3: Generation ── */}
       {step === 3 && (
-        <div className="space-y-4 text-center">
-          <h2 className="text-xl font-semibold">Generating Your Exam</h2>
+        <div className="flex flex-col items-center gap-6 py-12 text-center">
+          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10">
+            <Sparkles className="h-8 w-8 text-primary" />
+          </div>
+
+          <div>
+            <h2 className="text-xl font-semibold">Generating Your Exam</h2>
+            {genStatus && !genError && (
+              <p className="mt-1 text-sm text-muted-foreground">{genStatus}</p>
+            )}
+          </div>
+
           {polling && (
-            <div className="flex flex-col items-center gap-3">
-              <div className="h-10 w-10 animate-spin rounded-full border-4 border-blue-200 border-t-blue-600" />
-              <p className="text-sm text-gray-600">{genStatus}</p>
+            <LoadingSpinner size="lg" className="text-primary" />
+          )}
+
+          {!polling && !genError && genStatus?.startsWith("Done") && (
+            <div className="flex items-center gap-2 text-emerald-600">
+              <CheckCircle className="h-5 w-5" />
+              <span className="text-sm font-medium">{genStatus}</span>
             </div>
           )}
-          {!polling && !genError && <p className="text-sm text-green-600">{genStatus}</p>}
+
           {genError && (
-            <div className="rounded border border-red-300 bg-red-50 p-3 text-sm text-red-700">
-              Generation failed: {genError}
-              <button className="ml-2 underline" onClick={() => go(2)}>← Back</button>
-            </div>
+            <Alert variant="destructive" className="w-full text-left">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>Generation failed</AlertTitle>
+              <AlertDescription className="mt-2 flex flex-col gap-2">
+                <span>{genError}</span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-fit border-destructive/40 text-destructive hover:bg-destructive/10"
+                  onClick={() => go(2)}
+                >
+                  ← Back to Scenarios
+                </Button>
+              </AlertDescription>
+            </Alert>
           )}
         </div>
       )}
