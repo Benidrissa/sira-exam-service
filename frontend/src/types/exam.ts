@@ -120,6 +120,18 @@ export interface DissertationAnswer {
   created_at: string;
 }
 
+export interface ExamTest {
+  id: string;
+  bank_id: string;
+  title: string;
+  status: TestStatus;
+  time_limit_minutes: number | null;
+  shuffle_questions: boolean;
+  question_count: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface BulkValidationResponse {
   bank_id: string;
   validated_count: number;
