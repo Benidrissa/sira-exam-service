@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.domain.models.proctor import (
     EventSeverity,
     ExamSession,
+    NetworkGap,
     ProctorAlert,
     ProctorEvent,
     SessionStatus,
@@ -229,4 +230,65 @@ async def _get_active_session(db: AsyncSession, session_id: uuid.UUID) -> ExamSe
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Session is not active (status={session.status}).",
         )
+    return session
+
+
+async def _get_disconnected_session(db: AsyncSession, session_id: uuid.UUID) -> ExamSession:
+    """Return a session in `disconnected` state, or raise HTTP 404/409."""
+    session = await db.get(ExamSession, session_id)
+    if session is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Proctoring session not found.",
+        )
+    if session.status != SessionStatus.disconnected:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Session is not in disconnected state (status={session.status.value}).",
+        )
+    return session
+
+
+async def resume_session_after_disconnect(
+    db: AsyncSession,
+    *,
+    session_id: uuid.UUID,
+    answer_drafts: dict | None = None,
+) -> ExamSession:
+    """Reconnect a disconnected session: close NetworkGap, restore active status, merge drafts."""
+    from datetime import UTC, datetime
+
+    session = await _get_disconnected_session(db, session_id)
+    now = datetime.now(tz=UTC)
+
+    # Close the open NetworkGap row
+    open_gap = await db.scalar(
+        select(NetworkGap).where(
+            NetworkGap.session_id == session_id,
+            NetworkGap.reconnected_at.is_(None),
+        )
+    )
+    disconnected_at = session.disconnected_at or now
+    if open_gap:
+        open_gap.reconnected_at = now
+        open_gap.duration_seconds = int((now - disconnected_at).total_seconds())
+
+    # Restore session to active
+    session.status = SessionStatus.active
+    session.last_heartbeat_at = now
+    session.consecutive_missed_heartbeats = 0
+    session.disconnected_at = None
+
+    # Merge answer drafts into mcq_answers if provided
+    if answer_drafts:
+        from app.domain.models.exam import ExamAttempt
+
+        attempt = await db.get(ExamAttempt, session.attempt_id)
+        if attempt is not None:
+            existing = attempt.mcq_answers or {}
+            attempt.mcq_answers = {**existing, **answer_drafts}
+
+    await db.commit()
+    await db.refresh(session)
+    logger.info("session_reconnected", session_id=str(session_id))
     return session

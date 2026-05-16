@@ -153,3 +153,54 @@ class ProctoringEventBatchRequest(BaseModel):
 class ProctoringEventBatchResponse(BaseModel):
     recorded: int
     event_ids: list[uuid.UUID]
+
+
+# ---------------------------------------------------------------------------
+# E3-5: Reconnect + offline sync
+# ---------------------------------------------------------------------------
+
+
+class HeartbeatResumeRequest(BaseModel):
+    answer_drafts: dict[str, object] | None = None
+
+
+class HeartbeatResumeResponse(BaseModel):
+    ok: bool = True
+    session_id: uuid.UUID
+    reconnected_at: datetime
+    next_heartbeat_in: int = 30
+
+
+class OfflineFrameUploadUrlItem(BaseModel):
+    snapshot_id: uuid.UUID
+    taken_at: datetime
+
+
+class OfflineFrameUploadUrlRequest(BaseModel):
+    frames: list[OfflineFrameUploadUrlItem]
+
+
+class OfflineFrameUploadUrlResponseItem(BaseModel):
+    snapshot_id: uuid.UUID
+    upload_url: str
+    storage_key: str
+
+
+class OfflineFrameUploadUrlResponse(BaseModel):
+    urls: list[OfflineFrameUploadUrlResponseItem]
+
+
+class OfflineFrameRecordedItem(BaseModel):
+    snapshot_id: uuid.UUID
+    frame_seq: int = 0
+    edge_classification: str = "unknown"
+    taken_at: datetime | None = None
+
+
+class OfflineFrameBatchRecordedRequest(BaseModel):
+    frames: list[OfflineFrameRecordedItem]
+
+
+class OfflineFrameBatchRecordedResponse(BaseModel):
+    accepted: int
+    snapshot_ids: list[uuid.UUID]
