@@ -30,6 +30,7 @@ from app.schemas.proctor import (
     StartSessionResponse,
     TerminateSessionRequest,
 )
+from app.tasks.proctor_tasks import analyze_snapshot
 
 router = APIRouter(prefix="/proctor", tags=["proctor"])
 
@@ -206,13 +207,8 @@ async def snapshot_recorded(
     await db.commit()
     await db.refresh(snapshot)
 
-    # Dispatch Celery analysis task (implemented in proctor-b worktree)
-    try:
-        from app.tasks.proctor import analyze_snapshot  # type: ignore[import]
-
-        analyze_snapshot.delay(str(snapshot.id))
-    except ImportError:
-        pass  # Task not yet registered; safe to skip during bootstrap
+    # Dispatch Celery analysis task
+    analyze_snapshot.delay(str(snapshot.id))
 
     return SnapshotRecordedResponse.model_validate(snapshot)
 
