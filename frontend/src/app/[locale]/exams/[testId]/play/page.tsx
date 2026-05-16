@@ -46,8 +46,27 @@ export default function ExamPlayerPage() {
     }
   }, []);
 
+  const handleForceTerminate = useCallback(async () => {
+    if (proctoringSessionId) {
+      try {
+        await terminateSession(proctoringSessionId);
+      } catch (e) {
+        console.error("Force terminate failed:", e);
+      } finally {
+        sessionStorage.removeItem("proctor_session_id");
+        sessionStorage.removeItem("proctor_session_token");
+      }
+    }
+    router.push(`/${effectiveLocale}/exams/${testId}/results?reason=lockdown_violation`);
+  }, [proctoringSessionId, router, testId, effectiveLocale]);
+
   // Lockdown shell — enabled only for remote exams
-  useLockdownShell(isRemoteExam);
+  const { fullscreenActive, fullscreenCountdown, violationCount } = useLockdownShell(
+    isRemoteExam,
+    proctoringSessionId,
+    proctoringToken,
+    handleForceTerminate,
+  );
 
   // Webcam proctoring — enabled only for remote exams
   const { videoRef } = useWebcamProctor(
@@ -232,26 +251,54 @@ export default function ExamPlayerPage() {
           </div>
         )}
 
-        {session.questions.length === 0 && (
-          <p className="text-center py-12 text-muted-foreground text-sm">
-            No questions available for this exam.
-          </p>
-        )}
+        {/* Fullscreen gate — shown only for remote exams when fullscreen is lost */}
+        {isRemoteExam && !fullscreenActive ? (
+          <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 text-center px-6">
+            <p className="text-xl font-semibold text-destructive">Fullscreen Required</p>
+            <p className="text-sm text-muted-foreground max-w-xs">
+              Your exam requires fullscreen mode. Press{" "}
+              <kbd className="px-1 py-0.5 text-xs bg-muted rounded">F11</kbd>{" "}
+              or click below to continue.
+            </p>
+            {fullscreenCountdown > 0 && (
+              <p className="text-sm font-mono text-amber-600 font-semibold">
+                Session terminates in {fullscreenCountdown}s if not restored
+              </p>
+            )}
+            <button
+              className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90"
+              onClick={() => void document.documentElement.requestFullscreen()}
+            >
+              Return to Fullscreen
+            </button>
+            {violationCount > 0 && (
+              <p className="text-xs text-muted-foreground">{violationCount} violation(s) recorded</p>
+            )}
+          </div>
+        ) : (
+          <>
+            {session.questions.length === 0 && (
+              <p className="text-center py-12 text-muted-foreground text-sm">
+                No questions available for this exam.
+              </p>
+            )}
 
-        {session.questions.map((q, i) => (
-          <QuestionBlock
-            key={q.id}
-            index={i + 1}
-            question={q}
-            mcqAnswer={mcqAnswers[q.id] ?? []}
-            dissertationText={dissertations[q.id] ?? ""}
-            submitted={submitted}
-            onMCQSelect={(idx) => selectMCQ(q.id, idx)}
-            onDissertationChange={(text) =>
-              setDissertations((d) => ({ ...d, [q.id]: text }))
-            }
-          />
-        ))}
+            {session.questions.map((q, i) => (
+              <QuestionBlock
+                key={q.id}
+                index={i + 1}
+                question={q}
+                mcqAnswer={mcqAnswers[q.id] ?? []}
+                dissertationText={dissertations[q.id] ?? ""}
+                submitted={submitted}
+                onMCQSelect={(idx) => selectMCQ(q.id, idx)}
+                onDissertationChange={(text) =>
+                  setDissertations((d) => ({ ...d, [q.id]: text }))
+                }
+              />
+            ))}
+          </>
+        )}
       </div>
 
       {/* Webcam proctoring badge */}
