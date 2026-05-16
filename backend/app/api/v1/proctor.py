@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from fastapi import APIRouter, Header, HTTPException, status
 from sqlalchemy import select
 
-from app.api.deps import DB, CurrentUser, TeacherUser
+from app.api.deps import DB, CurrentUser
 from app.domain.models.proctor import ExamSession, ProctorSnapshot, SessionStatus
 from app.domain.services import proctor_session_service
 from app.infrastructure.exam_evidence import (
@@ -299,11 +299,16 @@ async def get_session(
 async def terminate_session(
     session_id: uuid.UUID,
     body: TerminateSessionRequest,
-    user: TeacherUser,
+    user: CurrentUser,
     db: DB,
 ) -> ExamSessionResponse:
-    """Terminate an active session (teacher only, FR-2.2)."""
-    await _get_session_or_404(db, session_id, _org(user))
+    """Terminate an active session (session owner or teacher, FR-2.2)."""
+    session = await _get_session_or_404(db, session_id, _org(user))
+    if not getattr(user, "is_teacher", False) and session.user_id != uuid.UUID(user.user_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorised to terminate this session.",
+        )
     updated = await proctor_session_service.terminate_session(
         db, session_id=session_id, reason=body.reason
     )

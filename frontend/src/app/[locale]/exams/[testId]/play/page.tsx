@@ -60,7 +60,14 @@ export default function ExamPlayerPage() {
           console.error("Failed to start proctoring session:", procErr);
         }
       })
-      .catch((e) => setError(String(e)))
+      .catch((e: unknown) => {
+        const httpStatus = (e as { status?: number })?.status;
+        if (httpStatus === 409) {
+          router.push(`/${effectiveLocale}/exams/${testId}/results`);
+        } else {
+          setError(String(e));
+        }
+      })
       .finally(() => setLoading(false));
   }, [testId]);
 
@@ -76,7 +83,7 @@ export default function ExamPlayerPage() {
     setSubmitting(true);
     try {
       const elapsed = Math.round((Date.now() - startTimeRef.current) / 1000);
-      await submitAttempt(session.attempt_id, {
+      const result = await submitAttempt(session.attempt_id, {
         mcq_answers: mcqAnswers,
         dissertation_answers: dissertations,
         time_taken_sec: elapsed,
@@ -91,7 +98,11 @@ export default function ExamPlayerPage() {
       }
 
       setSubmitted(true);
-      router.push(`/${effectiveLocale}/exams/${testId}/results`);
+      const params = new URLSearchParams({ attemptId: String(result.id) });
+      if (result.mcq_score != null) params.set("score", String(result.mcq_score));
+      if (result.total_score != null) params.set("total", String(result.total_score));
+      if (result.passed != null) params.set("passed", String(result.passed));
+      router.push(`/${effectiveLocale}/exams/${testId}/results?${params.toString()}`);
     } catch (e) {
       setError(String(e));
       setSubmitting(false);
