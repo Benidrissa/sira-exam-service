@@ -24,6 +24,7 @@ class StartSessionResponse(BaseModel):
     session_id: uuid.UUID
     session_token: str
     expires_in: int = 7200  # seconds
+    snapshot_interval_ms: int = 10_000
 
 
 class HeartbeatResponse(BaseModel):

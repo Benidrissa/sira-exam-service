@@ -91,6 +91,7 @@ async def start_session(
         session_id=session.id,
         session_token=raw_token,
         expires_in=7200,
+        snapshot_interval_ms=session.snapshot_interval_ms,
     )
 
 

@@ -150,6 +150,7 @@ export interface ProctoringSession {
   session_id: string;
   session_token: string;
   expires_in: number;
+  snapshot_interval_ms: number;
 }
 
 export interface SessionSummary {
