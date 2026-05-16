@@ -192,3 +192,11 @@ export interface SessionDetail extends SessionSummary {
   alerts: ProctorAlert[];
   snapshots: SessionSnapshot[];
 }
+
+export interface VLMConfigResponse {
+  model_version: string;
+  cdn_base: string;
+  tier1_models: { name: string; url: string; sha256: string }[];
+  tier2_model: { name: string; url: string; sha256: string } | null;
+  mandatory_sample_rate: number;
+}

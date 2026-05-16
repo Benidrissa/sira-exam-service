@@ -212,3 +212,32 @@ class OfflineFrameBatchRecordedRequest(BaseModel):
 class OfflineFrameBatchRecordedResponse(BaseModel):
     accepted: int
     snapshot_ids: list[uuid.UUID]
+
+
+# ---------------------------------------------------------------------------
+# E3-10: VLM config + edge result storage
+# ---------------------------------------------------------------------------
+
+
+class VLMModelInfo(BaseModel):
+    name: str
+    url: str
+    sha256: str = ""
+
+
+class VLMConfigResponse(BaseModel):
+    model_version: str
+    cdn_base: str
+    tier1_models: list[VLMModelInfo] = []
+    tier2_model: VLMModelInfo | None = None
+    mandatory_sample_rate: float = 0.10
+
+
+class EdgeResultRequest(BaseModel):
+    snapshot_id: uuid.UUID
+    captured_at: datetime
+    edge_decision: str  # "clean" | "flagged" | "uncertain" | "error"
+    edge_confidence: float
+    edge_inference_ms: int
+    model_version: str
+    violation_type: str = "none"

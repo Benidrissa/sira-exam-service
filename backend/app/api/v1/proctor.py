@@ -9,6 +9,7 @@ from fastapi import APIRouter, Header, HTTPException, status
 from sqlalchemy import select
 
 from app.api.deps import DB, CurrentUser
+from app.core.config import settings
 from app.domain.models.proctor import ExamSession, ProctorSnapshot, SessionStatus
 from app.domain.services import proctor_session_service
 from app.infrastructure.exam_evidence import (
@@ -19,6 +20,7 @@ from app.infrastructure.exam_evidence import (
 from app.schemas.proctor import (
     ConsentRequest,
     ConsentResponse,
+    EdgeResultRequest,
     ExamSessionResponse,
     HeartbeatResponse,
     HeartbeatResumeRequest,
@@ -41,6 +43,8 @@ from app.schemas.proctor import (
     StartSessionRequest,
     StartSessionResponse,
     TerminateSessionRequest,
+    VLMConfigResponse,
+    VLMModelInfo,
 )
 from app.tasks.proctor_tasks import analyze_snapshot
 
@@ -546,3 +550,92 @@ async def offline_frames_batch_recorded(
         accepted_ids.append(snap.id)
 
     return OfflineFrameBatchRecordedResponse(accepted=len(accepted_ids), snapshot_ids=accepted_ids)
+
+
+# ---------------------------------------------------------------------------
+# E3-10: VLM config + edge result storage
+# ---------------------------------------------------------------------------
+
+
+@router.get("/vlm-config", response_model=VLMConfigResponse)
+async def get_vlm_config(user: CurrentUser) -> VLMConfigResponse:
+    """Return current edge AI model configuration (FR-3.10).
+
+    Response is NOT cached (Cache-Control: no-store) so clients always get the latest version.
+    """
+    from fastapi.responses import JSONResponse
+
+    tier1_models: list[VLMModelInfo] = []
+    if settings.vlm_cdn_base:
+        tier1_models = [
+            VLMModelInfo(
+                name="mediapipe-face-landmarker",
+                url=f"{settings.vlm_cdn_base}/mediapipe-face-landmarker.task",
+            ),
+            VLMModelInfo(
+                name="yolo-world-s-int8",
+                url=f"{settings.vlm_cdn_base}/yolo-world-s-int8.onnx",
+            ),
+        ]
+    response_data = VLMConfigResponse(
+        model_version=settings.vlm_model_version or "v0.0.0",
+        cdn_base=settings.vlm_cdn_base or "",
+        tier1_models=tier1_models,
+        mandatory_sample_rate=0.10,
+    )
+    return JSONResponse(
+        content=response_data.model_dump(),
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@router.post(
+    "/sessions/{session_id}/edge-result",
+    status_code=status.HTTP_201_CREATED,
+)
+async def record_edge_result(
+    session_id: uuid.UUID,
+    body: EdgeResultRequest,
+    db: DB,
+    user: CurrentUser,
+    x_session_token: str = Header(..., alias="X-Session-Token"),
+) -> dict:
+    """Store edge AI verdict for a suppressed clean frame (no cloud analysis needed) (FR-3.10)."""
+    matched = await proctor_session_service.verify_session_token(db, raw_token=x_session_token)
+    if matched is None or matched.id != session_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired session token.",
+        )
+    session = await _get_session_or_404(db, session_id, _org(user))
+    if session.status != SessionStatus.active:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Session is not active (status={session.status.value}).",
+        )
+
+    # Create a ProctorSnapshot row with no storage_key (suppressed clean frame)
+    from app.domain.models.proctor import SnapshotAnalysis
+
+    snap = ProctorSnapshot(
+        id=body.snapshot_id,
+        session_id=session_id,
+        storage_key="",  # empty — frame was not uploaded
+        taken_at=body.captured_at,
+        captured_at=body.captured_at,
+        analysis_status=SnapshotAnalysis.clean,
+        edge_verdict=body.edge_decision,
+        edge_confidence=body.edge_confidence,
+        edge_model_version=body.model_version,
+        edge_processed=True,
+        is_offline_frame=False,
+    )
+    db.add(snap)
+
+    # Increment edge_clean_count in session edge_metadata
+    current_meta = session.edge_metadata or {}
+    current_meta["edge_clean_count"] = current_meta.get("edge_clean_count", 0) + 1
+    session.edge_metadata = current_meta
+
+    await db.commit()
+    return {"ok": True, "snapshot_id": str(snap.id)}

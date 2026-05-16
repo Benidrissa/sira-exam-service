@@ -56,6 +56,10 @@ class Settings(BaseSettings):
     celery_high_queue: str = "sira_exam_high"
     celery_low_queue: str = "sira_exam_low"
 
+    # VLM config (E3-10)
+    vlm_model_version: str = ""
+    vlm_cdn_base: str = ""
+
     # Sentry (optional)
     sentry_dsn: str = ""
 
