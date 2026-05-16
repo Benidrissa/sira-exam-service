@@ -18,6 +18,7 @@ from app.core.redis_client import get_redis
 from app.infrastructure.storage import get_exam_storage
 from app.schemas.proctor_monitor import (
     AcknowledgeAlertRequest,
+    NetworkGapSchema,
     ProctorAlertSchema,
     SessionDetailSchema,
     SessionSummarySchema,
@@ -48,8 +49,10 @@ async def list_sessions(
 
     from app.domain.models.proctor import (  # type: ignore[attr-defined]
         ExamSession,
+        NetworkGap,
         ProctorAlert,
         ProctorSnapshot,
+        SessionStatus,
     )
 
     # Non-admin teachers are scoped to their org
@@ -75,15 +78,38 @@ async def list_sessions(
         .scalar_subquery()
     )
 
+    # Correlated subquery: total offline duration (sum of gap durations) per session — E3-8
+    offline_duration_sq = (
+        sa_select(func.sum(NetworkGap.duration_seconds))
+        .where(NetworkGap.session_id == ExamSession.id)
+        .correlate(ExamSession)
+        .scalar_subquery()
+    )
+
+    # Correlated subquery: count of offline events per session — E3-8
+    offline_count_sq = (
+        sa_select(func.count(NetworkGap.id))
+        .where(NetworkGap.session_id == ExamSession.id)
+        .correlate(ExamSession)
+        .scalar_subquery()
+    )
+
     stmt = select(
         ExamSession,
         alert_count_sq.label("unacked_count"),
         latest_snap_sq.label("latest_snap_key"),
+        offline_duration_sq.label("offline_duration_s"),
+        offline_count_sq.label("offline_count"),
     )
     if effective_org is not None:
         stmt = stmt.where(ExamSession.org_id == effective_org)
     if session_status is not None:
         stmt = stmt.where(ExamSession.status == session_status)
+    else:
+        # Default: include active and disconnected sessions (E3-8)
+        stmt = stmt.where(
+            ExamSession.status.in_([SessionStatus.active, SessionStatus.disconnected])
+        )
     stmt = stmt.order_by(ExamSession.started_at.desc()).limit(100)
 
     result = await db.execute(stmt)
@@ -92,7 +118,7 @@ async def list_sessions(
     storage = get_exam_storage()
     out: list[SessionSummarySchema] = []
 
-    for sess, unacked_count, snap_key in rows:
+    for sess, unacked_count, snap_key, offline_duration_s, offline_count in rows:
         snap_url: str | None = None
         if snap_key:
             try:
@@ -103,6 +129,8 @@ async def list_sessions(
         schema = SessionSummarySchema.model_validate(sess)
         schema.unacked_alert_count = unacked_count or 0
         schema.latest_snapshot_url = snap_url
+        schema.total_offline_duration_s = int(offline_duration_s) if offline_duration_s else None
+        schema.offline_event_count = int(offline_count) if offline_count else 0
         out.append(schema)
 
     return out
@@ -148,7 +176,7 @@ async def get_session_detail(
     event_result = await db.execute(
         select(ProctorEvent)
         .where(ProctorEvent.session_id == session_id)
-        .order_by(ProctorEvent.created_at.desc())
+        .order_by(ProctorEvent.occurred_at.desc())
         .limit(50)
     )
     events = event_result.scalars().all()
@@ -161,6 +189,16 @@ async def get_session_detail(
         .limit(10)
     )
     snaps = snap_result.scalars().all()
+
+    # Network gaps (all, ordered chronologically) — E3-8
+    from app.domain.models.proctor import NetworkGap  # type: ignore[attr-defined]
+
+    gaps_result = await db.execute(
+        select(NetworkGap)
+        .where(NetworkGap.session_id == session_id)
+        .order_by(NetworkGap.disconnected_at)
+    )
+    gaps = gaps_result.scalars().all()
 
     storage = get_exam_storage()
     from app.schemas.proctor_monitor import ProctorSnapshotSchema
@@ -179,7 +217,128 @@ async def get_session_detail(
     detail.unacked_alerts = [ProctorAlertSchema.model_validate(a) for a in unacked_alerts]
     detail.recent_events = [ProctorEventSchema.model_validate(e) for e in events]
     detail.recent_snapshots = snap_schemas
+    detail.network_gaps = [NetworkGapSchema.model_validate(g) for g in gaps]
     return detail
+
+
+# ---------------------------------------------------------------------------
+# GET /sessions/{session_id}/evidence-report — E3-8
+# ---------------------------------------------------------------------------
+
+
+def _org(user: TeacherUser) -> uuid.UUID | None:  # type: ignore[valid-type]
+    """Return the teacher's org UUID, or None for admins (access all orgs)."""
+    if user.is_admin:  # type: ignore[union-attr]
+        return None
+    return uuid.UUID(user.org_id) if user.org_id else None  # type: ignore[union-attr]
+
+
+@router.get("/sessions/{session_id}/evidence-report")
+async def get_evidence_report(
+    session_id: uuid.UUID,
+    db: DB,
+    user: TeacherUser,
+) -> dict:
+    """Download forensic evidence report for a session (FR-3.8)."""
+    from app.domain.models.proctor import (  # type: ignore[attr-defined]
+        ExamSession,
+        NetworkGap,
+        ProctorAlert,
+        ProctorEvent,
+        ProctorSnapshot,
+    )
+
+    session = await db.get(ExamSession, session_id)
+    teacher_org = _org(user)
+    if session is None or (teacher_org is not None and session.org_id != teacher_org):
+        raise HTTPException(status_code=404, detail="Session not found.")
+
+    # Fetch all related data
+    gaps = (
+        await db.execute(
+            select(NetworkGap)
+            .where(NetworkGap.session_id == session_id)
+            .order_by(NetworkGap.disconnected_at)
+        )
+    ).scalars().all()
+
+    snapshots = (
+        await db.execute(
+            select(ProctorSnapshot)
+            .where(ProctorSnapshot.session_id == session_id)
+            .order_by(ProctorSnapshot.taken_at)
+        )
+    ).scalars().all()
+
+    events = (
+        await db.execute(
+            select(ProctorEvent)
+            .where(ProctorEvent.session_id == session_id)
+            .order_by(ProctorEvent.occurred_at)
+        )
+    ).scalars().all()
+
+    alerts = (
+        await db.execute(
+            select(ProctorAlert)
+            .where(ProctorAlert.session_id == session_id)
+            .order_by(ProctorAlert.created_at)
+        )
+    ).scalars().all()
+
+    return {
+        "session": {
+            "id": str(session.id),
+            "started_at": session.started_at.isoformat() if session.started_at else None,
+            "ended_at": session.ended_at.isoformat() if session.ended_at else None,
+            "status": session.status.value,
+        },
+        "network_gaps": [
+            {
+                "id": str(g.id),
+                "disconnected_at": g.disconnected_at.isoformat(),
+                "reconnected_at": g.reconnected_at.isoformat() if g.reconnected_at else None,
+                "duration_seconds": g.duration_seconds,
+                "auto_expired": g.auto_expired,
+            }
+            for g in gaps
+        ],
+        "snapshots": [
+            {
+                "id": str(s.id),
+                "storage_key": s.storage_key,
+                "taken_at": s.taken_at.isoformat() if s.taken_at else None,
+                "captured_at": s.captured_at.isoformat() if s.captured_at else None,
+                "is_offline_frame": s.is_offline_frame,
+                "violation_detected": s.violation_detected,
+                "violation_type": s.violation_type,
+                "confidence": s.confidence,
+                "frame_sha256": s.frame_sha256,
+                "edge_verdict": s.edge_verdict,
+                "integrity_check_passed": s.integrity_check_passed,
+            }
+            for s in snapshots
+        ],
+        "events": [
+            {
+                "id": str(e.id),
+                "event_type": e.event_type,
+                "severity": e.severity.value,
+                "occurred_at": e.occurred_at.isoformat() if e.occurred_at else None,
+            }
+            for e in events
+        ],
+        "alerts": [
+            {
+                "id": str(a.id),
+                "severity": a.severity.value,
+                "message": a.message,
+                "acknowledged": a.acknowledged,
+                "created_at": a.created_at.isoformat() if a.created_at else None,
+            }
+            for a in alerts
+        ],
+    }
 
 
 # ---------------------------------------------------------------------------

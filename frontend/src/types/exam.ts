@@ -153,14 +153,31 @@ export interface ProctoringSession {
   snapshot_interval_ms: number;
 }
 
+/** Forensic record of a connectivity interruption — E3-8 */
+export interface NetworkGap {
+  id: string;
+  session_id: string;
+  disconnected_at: string;
+  reconnected_at: string | null;
+  duration_seconds: number | null;
+  missed_heartbeat_count: number;
+  auto_expired: boolean;
+}
+
 export interface SessionSummary {
   id: string;
   user_id: string;
   started_at: string;
-  status: "active" | "terminated" | "expired" | "completed";
+  status: "active" | "disconnected" | "terminated" | "expired" | "completed";
   unacked_alert_count: number;
   latest_snapshot_url: string | null;
   consecutive_missed_heartbeats: number;
+  /** Timestamp when session went offline (status === "disconnected") — E3-8 */
+  disconnected_at?: string | null;
+  /** Sum of all gap durations in seconds — E3-8 */
+  total_offline_duration_s?: number | null;
+  /** Count of network interruption events — E3-8 */
+  offline_event_count?: number;
 }
 
 export interface ProctorAlert {
@@ -191,4 +208,6 @@ export interface SessionDetail extends SessionSummary {
   events: SessionEvent[];
   alerts: ProctorAlert[];
   snapshots: SessionSnapshot[];
+  /** Chronological list of offline intervals — E3-8 */
+  network_gaps: NetworkGap[];
 }
