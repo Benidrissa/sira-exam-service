@@ -9,7 +9,7 @@ import {
   acknowledgeAlert,
   terminateSessionAsProctor,
 } from "@/lib/api";
-import type { ProctorAlert, SessionEvent, SessionSnapshot } from "@/types/exam";
+import type { NetworkGap, ProctorAlert, SessionEvent, SessionSnapshot } from "@/types/exam";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -113,6 +113,35 @@ function EventEntry({ event }: { event: SessionEvent }) {
       <div className="pb-3 min-w-0">
         <p className="text-sm text-gray-700 font-medium">{event.event_type}</p>
         <p className="text-xs text-gray-400">{relativeTime(event.occurred_at)}</p>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Network gap timeline band — E3-8
+// ---------------------------------------------------------------------------
+function NetworkGapBand({ gap }: { gap: NetworkGap }) {
+  const start = new Date(gap.disconnected_at).toLocaleTimeString();
+  const end = gap.reconnected_at
+    ? new Date(gap.reconnected_at).toLocaleTimeString()
+    : "ongoing";
+  const label = gap.duration_seconds
+    ? `Offline ${gap.duration_seconds}s (${start} – ${end})`
+    : `Offline since ${start}`;
+
+  return (
+    <div className="flex gap-3">
+      <div className="flex flex-col items-center">
+        <div className="mt-1.5 h-2.5 w-2.5 rounded-full shrink-0 bg-amber-400" />
+        <div className="flex-1 w-px bg-amber-200 mt-1" />
+      </div>
+      <div className="pb-3 min-w-0">
+        <p className="text-sm text-amber-700 font-medium">Network disconnection</p>
+        <p className="text-xs text-gray-400">{label}</p>
+        {gap.auto_expired && (
+          <span className="text-xs text-red-500 font-medium">Session auto-expired</span>
+        )}
       </div>
     </div>
   );
@@ -233,6 +262,11 @@ export default function SessionDetailPage() {
     (a, b) => new Date(b.occurred_at).getTime() - new Date(a.occurred_at).getTime(),
   );
 
+  // Merge network gaps into timeline (newest first) — E3-8
+  const sortedGaps = [...(session.network_gaps ?? [])].sort(
+    (a, b) => new Date(b.disconnected_at).getTime() - new Date(a.disconnected_at).getTime(),
+  );
+
   return (
     <>
       {showTerminate && (
@@ -263,13 +297,24 @@ export default function SessionDetailPage() {
               Started {relativeTime(session.started_at)}
             </p>
           </div>
-          {session.status === "active" && (
-            <button
-              onClick={() => setShowTerminate(true)}
-              className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 transition">
-              Terminate session
-            </button>
-          )}
+          <div className="flex items-center gap-3 flex-wrap">
+            {/* Evidence Report download — E3-8 */}
+            <a
+              href={`${process.env.NEXT_PUBLIC_EXAM_API_URL}/proctor/monitor/sessions/${sessionId}/evidence-report`}
+              className="text-xs text-muted-foreground underline hover:text-foreground"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Download Evidence Report
+            </a>
+            {session.status === "active" && (
+              <button
+                onClick={() => setShowTerminate(true)}
+                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 transition">
+                Terminate session
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -332,12 +377,12 @@ export default function SessionDetailPage() {
           </div>
         </div>
 
-        {/* Event timeline */}
+        {/* Event timeline — E3-8: merged with network gap bands */}
         <div className="rounded-xl border bg-white p-4 space-y-3">
           <h2 className="font-semibold text-sm text-gray-700 uppercase tracking-wide">
             Event Timeline ({session.events.length})
           </h2>
-          {sortedEvents.length === 0 && (
+          {sortedEvents.length === 0 && sortedGaps.length === 0 && (
             <p className="text-sm text-gray-400">No events recorded.</p>
           )}
           <div className="max-h-64 overflow-y-auto">
@@ -345,6 +390,18 @@ export default function SessionDetailPage() {
               <EventEntry key={ev.id} event={ev} />
             ))}
           </div>
+          {sortedGaps.length > 0 && (
+            <>
+              <h3 className="font-semibold text-xs text-amber-600 uppercase tracking-wide mt-2">
+                Offline Intervals ({sortedGaps.length})
+              </h3>
+              <div className="max-h-40 overflow-y-auto">
+                {sortedGaps.map((gap) => (
+                  <NetworkGapBand key={gap.id} gap={gap} />
+                ))}
+              </div>
+            </>
+          )}
         </div>
       </main>
     </>
