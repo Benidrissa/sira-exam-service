@@ -58,6 +58,13 @@ async def _analyze_snapshot_async(snapshot_id: str) -> dict:  # type: ignore[typ
         await db.commit()
         await db.refresh(snap)
 
+        if not settings.enable_proctor_vision:
+            logger.info("proctor_vision_disabled", snapshot_id=snapshot_id)
+            snap.analysis_status = SnapshotAnalysis.clean
+            snap.analysis_result = {"skipped": True, "reason": "enable_proctor_vision=False"}
+            await db.commit()
+            return {"skipped": True}
+
         # Download image from MinIO
         from app.infrastructure.storage import get_exam_storage
 

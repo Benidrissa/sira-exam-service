@@ -35,6 +35,17 @@ export default function ExamPlayerPage() {
   const [proctoringToken, setProctoringToken] = useState<string | null>(null);
   const [isRemoteExam, setIsRemoteExam] = useState(false);
 
+  // Restore proctoring session across hard reloads (React state is not persistent)
+  useEffect(() => {
+    const savedId = sessionStorage.getItem("proctor_session_id");
+    const savedToken = sessionStorage.getItem("proctor_session_token");
+    if (savedId && savedToken) {
+      setProctoringSessionId(savedId);
+      setProctoringToken(savedToken);
+      setIsRemoteExam(true);
+    }
+  }, []);
+
   // Lockdown shell — enabled only for remote exams
   useLockdownShell(isRemoteExam);
 
@@ -56,6 +67,8 @@ export default function ExamPlayerPage() {
           const ps = await startProctoringSession(s.attempt_id);
           setProctoringSessionId(ps.session_id);
           setProctoringToken(ps.session_token);
+          sessionStorage.setItem("proctor_session_id", ps.session_id);
+          sessionStorage.setItem("proctor_session_token", ps.session_token);
         } catch (procErr) {
           console.error("Failed to start proctoring session:", procErr);
         }
@@ -94,6 +107,9 @@ export default function ExamPlayerPage() {
           await terminateSession(proctoringSessionId);
         } catch (e) {
           console.error("Failed to terminate proctoring session:", e);
+        } finally {
+          sessionStorage.removeItem("proctor_session_id");
+          sessionStorage.removeItem("proctor_session_token");
         }
       }
 

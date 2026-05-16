@@ -71,17 +71,36 @@ export function useWebcamProctor(
     return () => clearInterval(snapshotInterval);
   }, [enabled, sessionId, sessionToken, intervalMs]);
 
-  // Heartbeat loop (every 30s via sendBeacon)
+  // Heartbeat loop (every 30s — keepalive fetch so headers can be set; sendBeacon cannot)
   useEffect(() => {
     if (!enabled || !sessionId || !sessionToken) return;
 
-    const sendHeartbeatBeacon = () => {
-      const url = `${process.env.NEXT_PUBLIC_EXAM_API_URL}/proctor/sessions/${sessionId}/heartbeat`;
-      const blob = new Blob([JSON.stringify({})], { type: "application/json" });
-      navigator.sendBeacon(url, blob);
+    const sendHeartbeat = () => {
+      const match =
+        typeof document !== "undefined"
+          ? document.cookie.match(/(?:^|; )access_token=([^;]*)/)
+          : null;
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        "X-Session-Token": sessionToken,
+      };
+      if (match) {
+        headers["Authorization"] = `Bearer ${decodeURIComponent(match[1])}`;
+      }
+
+      fetch(
+        `${process.env.NEXT_PUBLIC_EXAM_API_URL}/proctor/sessions/${sessionId}/heartbeat`,
+        {
+          method: "POST",
+          keepalive: true,
+          headers,
+          body: JSON.stringify({}),
+          credentials: "include",
+        },
+      ).catch((e) => console.error("Heartbeat failed:", e));
     };
 
-    const heartbeatInterval = setInterval(sendHeartbeatBeacon, 30_000);
+    const heartbeatInterval = setInterval(sendHeartbeat, 30_000);
     return () => clearInterval(heartbeatInterval);
   }, [enabled, sessionId, sessionToken]);
 
