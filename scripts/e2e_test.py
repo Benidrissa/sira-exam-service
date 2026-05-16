@@ -97,7 +97,7 @@ def run_tests() -> None:
         set_cookie(page, teacher_token)
         page.goto(f"{STAGING}/fr/")
         page.wait_for_load_state("networkidle")
-        time.sleep(1)  # let React Query fetch banks
+        time.sleep(4)  # wait for React Query bank fetch + hydration
         shot(page, "02-teacher-home")
 
         try:
@@ -166,7 +166,7 @@ def run_tests() -> None:
             fail("Review board heading missing", str(e))
 
         try:
-            expect(page.locator(".rounded-2xl").first).to_be_visible(timeout=8000)
+            expect(page.locator(".rounded-lg.border.bg-white").first).to_be_visible(timeout=8000)
             ok("Review board shows scenario cards")
         except Exception as e:
             fail("Review board missing scenario cards", str(e))
@@ -195,7 +195,7 @@ def run_tests() -> None:
         shot(page, "04-create-wizard")
 
         try:
-            expect(page.get_by_text("Exam Info", exact=True)).to_be_visible(timeout=6000)
+            expect(page.get_by_role("heading", name="Exam Info")).to_be_visible(timeout=6000)
             ok("Create wizard step 1 'Exam Info' visible")
         except Exception as e:
             fail("Create wizard missing 'Exam Info' step", str(e))

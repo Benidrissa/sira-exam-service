@@ -6,6 +6,25 @@ import { useParams, useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { listExamBanks } from "@/lib/api";
 import type { ExamBank, BankStatus } from "@/types/exam";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardContent,
+  CardFooter,
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
+import { cn } from "@/lib/utils";
+import {
+  Plus,
+  GraduationCap,
+  FileText,
+  AlertCircle,
+  CheckCircle,
+} from "lucide-react";
 
 /* ── helpers ────────────────────────────────────────────────── */
 
@@ -36,20 +55,12 @@ function timeAgo(iso: string) {
   return "just now";
 }
 
-const STATUS_STYLE: Record<BankStatus, string> = {
-  draft: "bg-gray-100 text-gray-600",
-  generating: "bg-amber-100 text-amber-700",
-  review: "bg-orange-100 text-orange-700",
-  published: "bg-green-100 text-green-700",
-  archived: "bg-gray-100 text-gray-400",
-};
-
-const STATUS_DOT: Record<BankStatus, string> = {
-  draft: "bg-gray-400",
-  generating: "bg-amber-400 animate-pulse",
-  review: "bg-orange-400",
-  published: "bg-green-500",
-  archived: "bg-gray-300",
+const STATUS_BADGE_VARIANT: Record<BankStatus, "secondary" | "warning" | "success" | "outline"> = {
+  draft: "secondary",
+  generating: "warning",
+  review: "warning",
+  published: "success",
+  archived: "outline",
 };
 
 /* ── teacher view ───────────────────────────────────────────── */
@@ -62,9 +73,9 @@ function TeacherDashboard({ locale }: { locale: string }) {
 
   if (isLoading) {
     return (
-      <div className="space-y-3">
-        {[1, 2, 3].map(i => (
-          <div key={i} className="h-24 animate-pulse rounded-2xl bg-gray-100" />
+      <div className="space-y-4">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="h-24 animate-pulse rounded-xl bg-muted" />
         ))}
       </div>
     );
@@ -72,69 +83,90 @@ function TeacherDashboard({ locale }: { locale: string }) {
 
   if (error) {
     return (
-      <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-center">
-        <p className="text-red-700 font-medium">Failed to load exam banks</p>
-        <p className="mt-1 text-sm text-red-500">{String(error)}</p>
-        <button onClick={() => refetch()} className="mt-3 rounded-lg bg-red-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-red-700">
-          Retry
-        </button>
-      </div>
+      <Alert variant="destructive">
+        <AlertCircle className="h-4 w-4" />
+        <AlertTitle>Failed to load exam banks</AlertTitle>
+        <AlertDescription className="mt-2 flex flex-col gap-2">
+          <span>{String(error)}</span>
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-fit border-destructive/40 text-destructive hover:bg-destructive/10"
+            onClick={() => refetch()}
+          >
+            Retry
+          </Button>
+        </AlertDescription>
+      </Alert>
     );
   }
 
-  const active = banks?.filter(b => b.status !== "archived") ?? [];
-  const archived = banks?.filter(b => b.status === "archived") ?? [];
+  const active = banks?.filter((b) => b.status !== "archived") ?? [];
+  const archived = banks?.filter((b) => b.status === "archived") ?? [];
 
   return (
     <div className="space-y-6">
+      {/* Page heading */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">My Exam Banks</h1>
-          <p className="mt-0.5 text-sm text-gray-500">
+          <h1 className="text-2xl font-bold">My Exam Banks</h1>
+          <p className="mt-0.5 text-sm text-muted-foreground">
             {active.length} active {active.length === 1 ? "bank" : "banks"}
-            {banks && banks.length > active.length ? ` · ${archived.length} archived` : ""}
+            {banks && banks.length > active.length
+              ? ` · ${archived.length} archived`
+              : ""}
           </p>
         </div>
-        <Link
-          href={`/${locale}/create`}
-          className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 transition-colors"
-        >
-          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-          </svg>
-          New Exam
-        </Link>
+        <Button asChild variant="default">
+          <Link href={`/${locale}/create`}>
+            <Plus />
+            New Exam
+          </Link>
+        </Button>
       </div>
 
+      {/* Empty state */}
       {active.length === 0 && (
-        <div className="rounded-2xl border-2 border-dashed border-gray-200 py-16 text-center">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50">
-            <svg className="h-7 w-7 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25" />
-            </svg>
-          </div>
-          <h3 className="text-base font-semibold text-gray-900">No exam banks yet</h3>
-          <p className="mt-1 text-sm text-gray-500">Create your first exam bank to get started</p>
-          <Link href={`/${locale}/create`} className="mt-4 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 transition-colors">
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-            </svg>
-            Create exam bank
-          </Link>
+        <Card className="border-2 border-dashed border-border bg-transparent shadow-none py-12">
+          <CardContent className="flex flex-col items-center gap-4 text-center pt-0">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-muted">
+              <FileText className="h-7 w-7 text-muted-foreground" />
+            </div>
+            <div>
+              <h3 className="text-base font-semibold">No exam banks yet</h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Create your first exam bank to get started
+              </p>
+            </div>
+            <Button asChild variant="default">
+              <Link href={`/${locale}/create`}>
+                <Plus />
+                New Exam
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Active banks */}
+      {active.length > 0 && (
+        <div className="space-y-3">
+          {active.map((bank) => (
+            <BankCard key={bank.id} bank={bank} locale={locale} />
+          ))}
         </div>
       )}
 
-      <div className="space-y-3">
-        {active.map(bank => <BankCard key={bank.id} bank={bank} locale={locale} />)}
-      </div>
-
+      {/* Archived banks */}
       {archived.length > 0 && (
         <details className="mt-4">
-          <summary className="cursor-pointer select-none text-sm font-medium text-gray-400 hover:text-gray-600">
+          <summary className="cursor-pointer select-none text-sm font-medium text-muted-foreground hover:text-foreground">
             Show {archived.length} archived
           </summary>
           <div className="mt-3 space-y-3">
-            {archived.map(bank => <BankCard key={bank.id} bank={bank} locale={locale} />)}
+            {archived.map((bank) => (
+              <BankCard key={bank.id} bank={bank} locale={locale} />
+            ))}
           </div>
         </details>
       )}
@@ -168,70 +200,85 @@ function BankCard({ bank, locale }: { bank: ExamBank; locale: string }) {
   }
 
   return (
-    <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <h3 className="font-semibold text-gray-900 truncate max-w-xs">{bank.title_fr}</h3>
-            <span className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_STYLE[bank.status]}`}>
-              <span className={`h-1.5 w-1.5 rounded-full ${STATUS_DOT[bank.status]}`} />
-              {bank.status}
-            </span>
-          </div>
-          <p className="mt-1 text-xs text-gray-400">
-            {bank.subject && <span>{bank.subject} · </span>}
-            Updated {timeAgo(bank.updated_at)}
-          </p>
-        </div>
-      </div>
-
-      <div className="mt-4 flex flex-wrap items-center gap-2">
-        {(bank.status === "review" || bank.status === "published") && (
-          <Link
-            href={`/${locale}/banks/${bank.id}/review`}
-            className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100 transition-colors"
+    <Card className="transition-shadow hover:shadow-md">
+      <CardHeader className="pb-2">
+        <div className="flex items-start justify-between gap-3">
+          <CardTitle className="truncate max-w-xs text-base">{bank.title_fr}</CardTitle>
+          <Badge
+            variant={STATUS_BADGE_VARIANT[bank.status]}
+            className={cn(
+              bank.status === "generating" && "animate-pulse"
+            )}
           >
-            Review Board
-          </Link>
-        )}
-        {bank.status === "published" && (
-          <>
-            <Link
-              href={`/${locale}/exams/${bank.id}/results`}
-              className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100 transition-colors"
-            >
-              Grading
-            </Link>
-            <button
-              onClick={copyTestLink}
-              className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
-                copied
-                  ? "border-green-200 bg-green-50 text-green-700"
-                  : copyError
-                  ? "border-red-200 bg-red-50 text-red-600"
-                  : "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
-              }`}
-            >
-              {copied ? "✓ Link copied!" : copyError ? copyError : "Copy Student Link"}
-            </button>
-          </>
-        )}
+            {bank.status}
+          </Badge>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          {bank.subject && <span>{bank.subject} · </span>}
+          Updated {timeAgo(bank.updated_at)}
+        </p>
+      </CardHeader>
+
+      <CardContent className="pt-1">
+        {/* Generating shimmer */}
         {bank.status === "generating" && (
-          <span className="flex items-center gap-1.5 rounded-lg bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-700">
+          <div className="flex items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700">
             <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" />
             Generating questions…
-          </span>
+          </div>
         )}
-        {bank.status === "draft" && (
-          <Link
-            href={`/${locale}/create`}
-            className="rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-100 transition-colors"
-          >
-            Complete setup →
-          </Link>
+
+        {/* Actions */}
+        {bank.status !== "generating" && (
+          <div className="flex flex-wrap items-center gap-2">
+            {(bank.status === "review" || bank.status === "published") && (
+              <Button variant="outline" size="sm" asChild>
+                <Link href={`/${locale}/banks/${bank.id}/review`}>
+                  Review Board
+                </Link>
+              </Button>
+            )}
+            {bank.status === "published" && (
+              <>
+                <Button variant="outline" size="sm" asChild>
+                  <Link href={`/${locale}/exams/${bank.id}/results`}>
+                    Grading
+                  </Link>
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={copyTestLink}
+                  className={cn(
+                    copied &&
+                      "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100",
+                    copyError &&
+                      "border-destructive/40 bg-destructive/5 text-destructive"
+                  )}
+                >
+                  {copied ? (
+                    <>
+                      <CheckCircle className="h-3.5 w-3.5" />
+                      Copied
+                    </>
+                  ) : (
+                    "Copy Student Link"
+                  )}
+                </Button>
+                {copyError && (
+                  <p className="text-xs text-destructive">{copyError}</p>
+                )}
+              </>
+            )}
+            {bank.status === "draft" && (
+              <Button variant="outline" size="sm" asChild>
+                <Link href={`/${locale}/create`}>Complete setup</Link>
+              </Button>
+            )}
+          </div>
         )}
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -244,8 +291,13 @@ function StudentDashboard({ locale }: { locale: string }) {
 
   function handleStart() {
     const input = testInput.trim();
-    if (!input) { setError("Please enter a test ID or exam link."); return; }
-    const uuidMatch = input.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+    if (!input) {
+      setError("Please enter a test ID or exam link.");
+      return;
+    }
+    const uuidMatch = input.match(
+      /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
+    );
     if (uuidMatch) {
       router.push(`/${locale}/exams/${uuidMatch[0]}/play`);
     } else {
@@ -254,38 +306,46 @@ function StudentDashboard({ locale }: { locale: string }) {
   }
 
   return (
-    <div className="flex flex-col items-center justify-center py-12">
-      <div className="w-full max-w-sm text-center">
-        <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-green-50">
-          <svg className="h-7 w-7 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M4.26 10.147a60.438 60.438 0 0 0-.491 6.347A48.62 48.62 0 0 1 12 20.904a48.62 48.62 0 0 1 8.232-4.41 60.46 60.46 0 0 0-.491-6.347m-15.482 0a50.636 50.636 0 0 0-2.658-.813A59.906 59.906 0 0 1 12 3.493a59.903 59.903 0 0 1 10.399 5.84c-.896.248-1.783.52-2.658.814m-15.482 0A50.717 50.717 0 0 1 12 13.489a50.702 50.702 0 0 1 3.741-3.342" />
-          </svg>
-        </div>
-        <h1 className="text-xl font-bold text-gray-900">Take an exam</h1>
-        <p className="mt-1 text-sm text-gray-500">
-          Enter the test link or ID provided by your teacher
-        </p>
-        <div className="mt-5 flex gap-2">
-          <input
-            type="text"
-            value={testInput}
-            onChange={e => { setTestInput(e.target.value); setError(""); }}
-            onKeyDown={e => e.key === "Enter" && handleStart()}
-            placeholder="Paste test ID or link…"
-            className="flex-1 rounded-xl border border-gray-200 px-4 py-2.5 text-sm shadow-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
-          />
-          <button
-            onClick={handleStart}
-            className="rounded-xl bg-green-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-green-700 transition-colors"
-          >
-            Go →
-          </button>
-        </div>
-        {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
-        <p className="mt-6 text-xs text-gray-400">
-          Your teacher will share the exam link with you directly.
-        </p>
-      </div>
+    <div className="flex justify-center mt-16">
+      <Card className="w-full max-w-sm mx-auto">
+        <CardHeader className="items-center text-center gap-2">
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10">
+            <GraduationCap className="h-6 w-6 text-primary" style={{ width: 48, height: 48 }} />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold">Take an Exam</h1>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Enter your test link or ID
+          </p>
+        </CardHeader>
+
+        <CardContent className="space-y-3">
+          <div className="flex gap-2">
+            <Input
+              type="text"
+              value={testInput}
+              onChange={(e) => {
+                setTestInput(e.target.value);
+                setError("");
+              }}
+              onKeyDown={(e) => e.key === "Enter" && handleStart()}
+              placeholder="Paste test ID or link…"
+              className={cn(error && "border-destructive focus-visible:ring-destructive/30")}
+            />
+            <Button onClick={handleStart}>Go →</Button>
+          </div>
+          {error && (
+            <p className="text-xs text-destructive">{error}</p>
+          )}
+        </CardContent>
+
+        <CardFooter>
+          <p className="text-xs text-muted-foreground text-center w-full">
+            Your teacher will share the exam link with you directly.
+          </p>
+        </CardFooter>
+      </Card>
     </div>
   );
 }
@@ -302,7 +362,11 @@ export default function HomePage() {
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
-      {isTeacher ? <TeacherDashboard locale={locale} /> : <StudentDashboard locale={locale} />}
+      {isTeacher ? (
+        <TeacherDashboard locale={locale} />
+      ) : (
+        <StudentDashboard locale={locale} />
+      )}
     </main>
   );
 }

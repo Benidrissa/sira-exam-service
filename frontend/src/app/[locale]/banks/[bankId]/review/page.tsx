@@ -12,6 +12,15 @@ import {
 } from "@/lib/api";
 import type { ExamScenario, ExamQuestion } from "@/types/exam";
 import { useDebounce } from "@/hooks/use-debounce";
+import { Button } from "@/components/ui/button";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import { cn } from "@/lib/utils";
+import { CheckCircle2, ChevronDown, ChevronUp, Copy } from "lucide-react";
 
 export default function ReviewBoardPage() {
   const { bankId, locale } = useParams<{ bankId: string; locale: string }>();
@@ -23,6 +32,7 @@ export default function ReviewBoardPage() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [publishState, setPublishState] = useState<"idle" | "publishing" | "done" | "error">("idle");
   const [testLink, setTestLink] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     Promise.all([listScenarios(bankId), listQuestions(bankId)])
@@ -42,12 +52,10 @@ export default function ReviewBoardPage() {
       await validateAll(bankId);
       setPublishState("done");
       setQuestions((qs) => qs.map((q) => ({ ...q, validated: true })));
-      // Fetch or create a test and show the student link
       try {
         const API = process.env.NEXT_PUBLIC_EXAM_API_URL ?? "http://localhost:8001/api/v1";
         let tests = await (await fetch(`${API}/exam/banks/${bankId}/tests`, { credentials: "include" })).json();
         if (!tests.length) {
-          // Auto-create a test
           const res = await fetch(`${API}/exam/banks/${bankId}/tests`, {
             method: "POST", credentials: "include",
             headers: { "Content-Type": "application/json" },
@@ -65,20 +73,34 @@ export default function ReviewBoardPage() {
     }
   }
 
+  async function handleCopy() {
+    if (!testLink) return;
+    await navigator.clipboard.writeText(testLink);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
   if (loading) return (
     <main className="max-w-3xl mx-auto p-8">
       <div className="space-y-4">
-        {[1,2,3].map(i => <div key={i} className="h-32 animate-pulse rounded-xl bg-gray-100" />)}
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="h-32 animate-pulse rounded-xl bg-muted" />
+        ))}
       </div>
     </main>
   );
+
   if (error) return (
     <main className="max-w-3xl mx-auto p-8">
-      <div className="rounded-xl border border-red-200 bg-red-50 p-6">
-        <p className="font-medium text-red-700">Failed to load</p>
-        <p className="mt-1 text-sm text-red-500">{error}</p>
-        <button onClick={() => router.back()} className="mt-3 text-sm text-red-600 underline">Go back</button>
-      </div>
+      <Alert variant="destructive">
+        <AlertTitle>Failed to load</AlertTitle>
+        <AlertDescription>
+          {error}
+          <button onClick={() => router.back()} className="mt-2 block text-sm underline">
+            Go back
+          </button>
+        </AlertDescription>
+      </Alert>
     </main>
   );
 
@@ -87,49 +109,70 @@ export default function ReviewBoardPage() {
   return (
     <main className="max-w-3xl mx-auto p-6 pb-12 space-y-5">
       {/* Header */}
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Review &amp; Edit</h1>
-          <p className="text-xs text-gray-400 mt-0.5">{questions.length} questions · {scenarios.length} scenarios</p>
+          <h1 className="text-2xl font-bold">Review &amp; Edit</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            {questions.length} questions · {scenarios.length} scenarios
+          </p>
         </div>
-        <div className="flex items-center gap-2">
-          {saveError && <span className="text-xs text-red-500">{saveError}</span>}
+        <div className="flex items-center gap-3 flex-wrap">
+          {saveError && (
+            <Alert variant="destructive" className="py-2 px-3 text-xs w-auto">
+              <AlertDescription>{saveError}</AlertDescription>
+            </Alert>
+          )}
           {publishState === "done" ? (
-            <span className="rounded-lg bg-green-50 border border-green-200 px-3 py-1.5 text-sm font-medium text-green-700">✓ Published</span>
+            <Badge variant="success" className="text-sm px-3 py-1.5 rounded-lg">
+              <CheckCircle2 className="mr-1.5" />
+              Published
+            </Badge>
           ) : (
-            <button
+            <Button
               disabled={publishState === "publishing" || questions.length === 0}
               onClick={handleValidateAll}
-              className="rounded-lg bg-green-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50 transition-colors">
-              {publishState === "publishing" ? "Publishing…" : allValidated ? "Publish Bank" : "Validate All & Publish"}
-            </button>
+            >
+              {publishState === "publishing" ? (
+                <>
+                  <LoadingSpinner className="mr-1.5 h-4 w-4" />
+                  Publishing…
+                </>
+              ) : allValidated ? "Publish Bank" : "Validate All & Publish"}
+            </Button>
           )}
         </div>
       </div>
 
-      {/* Test link shown after publish */}
+      {/* Test link banner after publish */}
       {testLink && (
-        <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
-          <p className="text-sm font-semibold text-blue-800 mb-2">✓ Bank published! Share this link with students:</p>
-          <div className="flex items-center gap-2">
-            <code className="flex-1 rounded bg-white border border-blue-200 px-3 py-1.5 text-xs text-blue-700 truncate">{testLink}</code>
-            <button
-              onClick={async () => { await navigator.clipboard.writeText(testLink); }}
-              className="shrink-0 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
-            >
-              Copy
-            </button>
-          </div>
-        </div>
+        <Alert variant="success">
+          <CheckCircle2 className="h-4 w-4" />
+          <AlertTitle>Bank published! Share this link with students:</AlertTitle>
+          <AlertDescription>
+            <div className="flex items-center gap-2 mt-2">
+              <code className="flex-1 rounded-lg border border-emerald-200 bg-white/60 px-3 py-1.5 text-xs truncate">
+                {testLink}
+              </code>
+              <Button size="sm" variant="outline" onClick={handleCopy} className="shrink-0">
+                <Copy className="mr-1 h-3 w-3" />
+                {copied ? "Copied!" : "Copy"}
+              </Button>
+            </div>
+          </AlertDescription>
+        </Alert>
       )}
 
+      {/* Zero-questions warning */}
       {questions.length === 0 && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700">
-          No questions generated yet. Go back and trigger generation first.
-        </div>
+        <Alert variant="warning">
+          <AlertTitle>No questions yet</AlertTitle>
+          <AlertDescription>
+            No questions generated yet. Go back and trigger generation first.
+          </AlertDescription>
+        </Alert>
       )}
 
-
+      {/* Scenario cards */}
       {scenarios.map((scenario) => (
         <ScenarioCard
           key={scenario.id}
@@ -143,7 +186,7 @@ export default function ReviewBoardPage() {
       ))}
 
       {scenarios.length === 0 && (
-        <p className="text-sm text-gray-400 text-center py-12">No scenarios generated yet.</p>
+        <p className="text-sm text-muted-foreground text-center py-12">No scenarios generated yet.</p>
       )}
     </main>
   );
@@ -165,7 +208,7 @@ function ScenarioCard({ bankId, scenario, questions, onQuestionUpdate, onSaveErr
       try { await patchScenario(bankId, scenario.id, { title: val }); }
       catch (e) { onSaveError(`Failed to save scenario: ${e instanceof Error ? e.message : String(e)}`); }
       finally { setSaving(false); }
-    }, [bankId, scenario.id]),
+    }, [bankId, scenario.id, onSaveError]),
     600,
   );
 
@@ -175,27 +218,38 @@ function ScenarioCard({ bankId, scenario, questions, onQuestionUpdate, onSaveErr
   }
 
   return (
-    <div className="rounded-lg border bg-white shadow-sm">
-      <div className="flex items-center gap-3 border-b px-4 py-3">
-        <input
-          className="flex-1 rounded border border-transparent bg-transparent px-2 py-1 text-sm font-semibold hover:border-gray-200 focus:border-blue-400 focus:outline-none"
-          value={title}
-          onChange={(e) => handleTitleChange(e.target.value)} />
-        {saving && <span className="text-xs text-gray-400">Saving…</span>}
-      </div>
-      <div className="divide-y">
-        {questions.map((q) => (
-          <QuestionCard key={q.id} bankId={bankId} question={q} onUpdate={onQuestionUpdate} onSaveError={onSaveError} />
-        ))}
-      </div>
-      {questions.length === 0 && (
-        <p className="py-4 text-center text-xs text-gray-400">No questions</p>
-      )}
-    </div>
+    <Card className="mb-4">
+      <CardHeader className="pb-3">
+        <div className="flex items-center gap-3">
+          <Input
+            className="flex-1 border-transparent bg-transparent font-bold text-base hover:border-input focus:border-input px-2"
+            value={title}
+            onChange={(e) => handleTitleChange(e.target.value)}
+          />
+          {saving && <span className="text-xs text-muted-foreground shrink-0">Saving…</span>}
+        </div>
+      </CardHeader>
+      <CardContent className="pt-0 px-0 pb-0">
+        <div className="divide-y divide-border">
+          {questions.map((q) => (
+            <QuestionRow
+              key={q.id}
+              bankId={bankId}
+              question={q}
+              onUpdate={onQuestionUpdate}
+              onSaveError={onSaveError}
+            />
+          ))}
+          {questions.length === 0 && (
+            <p className="py-4 text-center text-xs text-muted-foreground">No questions</p>
+          )}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
-function QuestionCard({ bankId, question, onUpdate, onSaveError }: {
+function QuestionRow({ bankId, question, onUpdate, onSaveError }: {
   bankId: string;
   question: ExamQuestion;
   onUpdate: (q: ExamQuestion) => void;
@@ -204,6 +258,7 @@ function QuestionCard({ bankId, question, onUpdate, onSaveError }: {
   const [description, setDescription] = useState(question.description);
   const [saving, setSaving] = useState(false);
   const [validating, setValidating] = useState(false);
+  const [rubricOpen, setRubricOpen] = useState(false);
 
   const saveDescription = useDebounce(
     useCallback(async (val: string) => {
@@ -229,50 +284,93 @@ function QuestionCard({ bankId, question, onUpdate, onSaveError }: {
   }
 
   return (
-    <div className="px-4 py-3 space-y-2">
+    <div className="px-5 py-4 space-y-3">
+      {/* Main row */}
       <div className="flex items-start gap-3">
-        <span className={`mt-0.5 rounded px-1.5 py-0.5 text-xs font-medium
-          ${question.question_type === "mcq" ? "bg-blue-100 text-blue-700" : "bg-purple-100 text-purple-700"}`}>
-          {question.question_type.toUpperCase()}
-        </span>
-        <textarea
-          rows={2}
-          className="flex-1 rounded border border-transparent bg-transparent px-1 text-sm hover:border-gray-200 focus:border-blue-400 focus:outline-none resize-none"
-          value={description}
-          onChange={(e) => { setDescription(e.target.value); saveDescription(e.target.value); }} />
-        <div className="flex flex-col items-end gap-1">
-          {saving && <span className="text-xs text-gray-400">Saving…</span>}
+        {/* Left: badge + textarea */}
+        <div className="flex-1 flex items-start gap-3 min-w-0">
+          <Badge
+            variant={question.question_type === "mcq" ? "info" : "purple"}
+            className="mt-0.5 shrink-0"
+          >
+            {question.question_type.toUpperCase()}
+          </Badge>
+          <Textarea
+            rows={2}
+            className="flex-1 min-w-0 border-transparent bg-transparent text-sm hover:border-input focus:border-input resize-none"
+            value={description}
+            onChange={(e) => { setDescription(e.target.value); saveDescription(e.target.value); }}
+          />
+        </div>
+        {/* Right: saving indicator + validate */}
+        <div className="flex flex-col items-end gap-1.5 shrink-0">
+          {saving && <span className="text-xs text-muted-foreground">Saving…</span>}
           {question.validated ? (
-            <span className="rounded bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">✓ Validated</span>
+            <Badge variant="success">
+              <CheckCircle2 className="mr-1" />
+              Validated
+            </Badge>
           ) : (
-            <button onClick={handleValidate} disabled={validating}
-              className="rounded border border-green-300 px-2 py-0.5 text-xs text-green-600 hover:bg-green-50 disabled:opacity-50">
-              {validating ? "…" : "Validate"}
-            </button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleValidate}
+              disabled={validating}
+            >
+              {validating ? <LoadingSpinner className="h-3 w-3" /> : "Validate"}
+            </Button>
           )}
         </div>
       </div>
+
+      {/* MCQ options */}
       {question.question_type === "mcq" && question.options && (
-        <ul className="ml-12 space-y-1">
-          {question.options.map((opt, i) => (
-            <li key={i} className={`flex items-center gap-2 text-xs
-              ${(question.correct_answer_indices ?? []).includes(i) ? "text-green-700 font-medium" : "text-gray-500"}`}>
-              <span className="font-mono">{opt.label}.</span> {opt.text}
-              {(question.correct_answer_indices ?? []).includes(i) && <span className="text-green-500">✓</span>}
-            </li>
-          ))}
+        <ul className="ml-16 space-y-1">
+          {question.options.map((opt, i) => {
+            const isCorrect = (question.correct_answer_indices ?? []).includes(i);
+            return (
+              <li
+                key={i}
+                className={cn(
+                  "flex items-center gap-2 text-xs",
+                  isCorrect ? "text-emerald-600 font-medium" : "text-muted-foreground",
+                )}
+              >
+                <span className="h-1.5 w-1.5 rounded-full bg-current shrink-0" />
+                <span className="font-mono">{opt.label}.</span>
+                {opt.text}
+                {isCorrect && <span className="ml-0.5">✓</span>}
+              </li>
+            );
+          })}
         </ul>
       )}
-      {question.question_type === "dissertation" && question.rubric && (
-        <div className="ml-12">
-          <p className="text-xs text-gray-400 mb-1">Rubric:</p>
-          <ul className="space-y-0.5">
-            {question.rubric.map((r, i) => (
-              <li key={i} className="text-xs text-gray-600">
-                <span className="font-medium">{r.criterion}</span> ({r.max_points} pts) — {r.description}
-              </li>
-            ))}
-          </ul>
+
+      {/* Dissertation rubric (collapsible) */}
+      {question.question_type === "dissertation" && question.rubric && question.rubric.length > 0 && (
+        <div className="ml-16">
+          <button
+            onClick={() => setRubricOpen((o) => !o)}
+            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            {rubricOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+            Rubric ({question.rubric.length} criteria)
+          </button>
+          {rubricOpen && (
+            <div className="mt-2 space-y-1.5">
+              {question.rubric.map((r, i) => (
+                <div
+                  key={i}
+                  className="flex items-center justify-between rounded-lg border border-border bg-muted/40 px-3 py-2"
+                >
+                  <span className="text-xs font-medium text-foreground">{r.criterion}</span>
+                  <span className="text-xs rounded-full border border-border bg-background px-2 py-0.5 font-mono">
+                    {r.max_points} pts
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
