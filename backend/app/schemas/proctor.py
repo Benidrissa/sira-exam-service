@@ -1,4 +1,4 @@
-"""Pydantic V2 schemas for proctoring endpoints (E2-2, E2-4)."""
+"""Pydantic V2 schemas for proctoring endpoints (E2-2, E2-4, E3-3)."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
 
-from app.domain.models.proctor import SessionStatus, SnapshotAnalysis
+from app.domain.models.proctor import EventSeverity, SessionStatus, SnapshotAnalysis
 
 # ---------------------------------------------------------------------------
 # Session
@@ -121,3 +121,35 @@ class ExamSessionResponse(BaseModel):
     consent_given_at: datetime | None
     reference_frame_key: str | None
     termination_reason: str | None
+
+
+# ---------------------------------------------------------------------------
+# Lockdown events (E3-3)
+# ---------------------------------------------------------------------------
+
+
+class ProctoringEventRequest(BaseModel):
+    event_type: str
+    severity: EventSeverity = EventSeverity.info
+    payload: dict[str, object] | None = None
+    occurred_at: datetime | None = None
+
+
+class ProctoringEventResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    session_id: uuid.UUID
+    event_type: str
+    severity: EventSeverity
+    payload: dict[str, object] | None = None
+    occurred_at: datetime
+
+
+class ProctoringEventBatchRequest(BaseModel):
+    events: list[ProctoringEventRequest]
+
+
+class ProctoringEventBatchResponse(BaseModel):
+    recorded: int
+    event_ids: list[uuid.UUID]
