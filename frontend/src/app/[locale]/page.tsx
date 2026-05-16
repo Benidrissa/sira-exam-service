@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { listExamBanks } from "@/lib/api";
+import { listExamBanks, listBankTests } from "@/lib/api";
 import type { ExamBank, BankStatus } from "@/types/exam";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -178,17 +178,19 @@ function BankCard({ bank, locale }: { bank: ExamBank; locale: string }) {
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState<string | null>(null);
 
+  // Pre-fetch the first published test for this bank (needed for Grading link + student link)
+  const { data: tests } = useQuery({
+    queryKey: ["bank-tests", bank.id],
+    queryFn: () => listBankTests(bank.id),
+    enabled: bank.status === "published",
+    staleTime: 60_000,
+  });
+  const testId = tests?.[0]?.id ?? null;
+
   async function copyTestLink() {
     setCopyError(null);
     try {
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_EXAM_API_URL ?? "http://localhost:8001/api/v1"}/exam/banks/${bank.id}/tests`,
-        { credentials: "include" }
-      );
-      if (!res.ok) throw new Error("No tests found");
-      const tests = await res.json();
-      if (!tests.length) throw new Error("No tests created for this bank yet");
-      const testId = tests[0].id;
+      if (!testId) throw new Error("No tests found for this bank");
       const url = `${window.location.origin}/${locale}/exams/${testId}/play`;
       await navigator.clipboard.writeText(url);
       setCopied(true);
@@ -240,8 +242,8 @@ function BankCard({ bank, locale }: { bank: ExamBank; locale: string }) {
             )}
             {bank.status === "published" && (
               <>
-                <Button variant="outline" size="sm" asChild>
-                  <Link href={`/${locale}/exams/${bank.id}/results`}>
+                <Button variant="outline" size="sm" asChild disabled={!testId}>
+                  <Link href={testId ? `/${locale}/exams/${testId}/results` : "#"}>
                     Grading
                   </Link>
                 </Button>
