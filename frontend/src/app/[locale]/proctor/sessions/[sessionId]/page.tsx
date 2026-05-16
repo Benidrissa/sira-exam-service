@@ -69,6 +69,27 @@ function AlertRow({
 // Snapshot card
 // ---------------------------------------------------------------------------
 function SnapshotCard({ snapshot }: { snapshot: SessionSnapshot }) {
+  // E3-14: Determine edge AI badge style and label
+  const edgeBadgeClass = snapshot.edge_verdict
+    ? snapshot.edge_verdict === "flagged" && snapshot.violation_detected
+      ? "bg-red-100 text-red-700"
+      : snapshot.edge_verdict === "flagged"
+        ? "bg-amber-100 text-amber-700"
+        : snapshot.is_offline_frame
+          ? "bg-gray-100 text-gray-500"
+          : "bg-blue-50 text-blue-600"
+    : null;
+
+  const edgeBadgeLabel = snapshot.edge_verdict
+    ? snapshot.edge_verdict === "flagged" && snapshot.violation_detected
+      ? "Edge + Confirmed"
+      : snapshot.edge_verdict === "flagged"
+        ? "Edge Only"
+        : snapshot.is_offline_frame
+          ? "Offline"
+          : "Server"
+    : null;
+
   return (
     <div className="relative rounded-lg overflow-hidden bg-gray-100 aspect-video">
       {snapshot.download_url ? (
@@ -85,6 +106,13 @@ function SnapshotCard({ snapshot }: { snapshot: SessionSnapshot }) {
       )}
       {snapshot.violation_detected && (
         <div className="absolute top-1 right-1 rounded-full bg-red-500 h-3 w-3 shadow" title="Violation detected" />
+      )}
+      {/* E3-14: Edge AI badge */}
+      {edgeBadgeClass && edgeBadgeLabel && (
+        <span
+          className={`absolute top-1 left-1 inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium ${edgeBadgeClass}`}>
+          {edgeBadgeLabel}
+        </span>
       )}
       <p className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-xs px-1.5 py-0.5">
         {relativeTime(snapshot.taken_at)}

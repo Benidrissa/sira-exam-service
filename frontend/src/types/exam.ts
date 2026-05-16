@@ -202,6 +202,14 @@ export interface SessionSnapshot {
   taken_at: string;
   violation_detected: boolean | null;
   download_url: string | null;
+  /** E3-14: Edge AI verdict for this frame ("clean" | "flagged" | null) */
+  edge_verdict?: string | null;
+  /** E3-14: Confidence score from edge model (0–1) */
+  edge_confidence?: number | null;
+  /** E3-14: True when frame was captured during an offline gap */
+  is_offline_frame?: boolean;
+  /** E3-14: Whether SHA-256 integrity check passed on server */
+  integrity_check_passed?: boolean | null;
 }
 
 export interface SessionDetail extends SessionSummary {

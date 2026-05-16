@@ -463,6 +463,78 @@ async def acknowledge_alert(
 
 
 # ---------------------------------------------------------------------------
+# GET /admin/edge-metrics — E3-14
+# ---------------------------------------------------------------------------
+
+
+@router.get("/admin/edge-metrics")
+async def get_edge_metrics(db: DB, user: TeacherUser) -> dict:
+    """Edge AI model performance metrics for calibration (E3-14).
+
+    Teacher/admin role. Shows false-negative rate and inference stats.
+    """
+    if not user.is_teacher and not user.is_admin:  # type: ignore[union-attr]
+        raise HTTPException(status_code=403, detail="Teacher or admin role required.")
+
+    from sqlalchemy import func as sa_func
+    from sqlalchemy import select as sa_select
+
+    from app.domain.models.proctor import ProctorSnapshot  # type: ignore[attr-defined]
+
+    # Total snapshots with edge classification
+    total_q = await db.scalar(sa_select(sa_func.count(ProctorSnapshot.id)))
+    edge_q = await db.scalar(
+        sa_select(sa_func.count(ProctorSnapshot.id)).where(
+            ProctorSnapshot.edge_verdict.is_not(None)
+        )
+    )
+
+    # False negative rate: edge said clean, Claude said flagged
+    fn_q = await db.scalar(
+        sa_select(sa_func.count(ProctorSnapshot.id)).where(
+            ProctorSnapshot.edge_verdict == "clean",
+            ProctorSnapshot.violation_detected == True,  # noqa: E712
+        )
+    )
+
+    # Edge classified as clean (denominator for FN rate)
+    edge_clean_q = await db.scalar(
+        sa_select(sa_func.count(ProctorSnapshot.id)).where(
+            ProctorSnapshot.edge_verdict == "clean"
+        )
+    )
+
+    total = total_q or 0
+    edge_classified = edge_q or 0
+    false_negatives = fn_q or 0
+    edge_clean = edge_clean_q or 0
+
+    fn_rate_pct = (false_negatives / edge_clean * 100) if edge_clean > 0 else 0.0
+    coverage_pct = (edge_classified / total * 100) if total > 0 else 0.0
+
+    # Model version distribution
+    version_q = await db.execute(
+        sa_select(
+            ProctorSnapshot.edge_model_version,
+            sa_func.count(ProctorSnapshot.id).label("count"),
+        )
+        .where(ProctorSnapshot.edge_model_version.is_not(None))
+        .group_by(ProctorSnapshot.edge_model_version)
+    )
+    model_versions = {row.edge_model_version: row.count for row in version_q.fetchall()}
+
+    return {
+        "total_snapshots": total,
+        "edge_classified": edge_classified,
+        "edge_coverage_pct": round(coverage_pct, 1),
+        "edge_fn_rate_pct": round(fn_rate_pct, 1),
+        "edge_clean": edge_clean,
+        "false_negatives": false_negatives,
+        "model_version_distribution": model_versions,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
