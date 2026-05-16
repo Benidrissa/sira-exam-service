@@ -19,6 +19,7 @@ from app.core.database import Base
 
 class SessionStatus(str, enum.Enum):
     active = "active"
+    disconnected = "disconnected"
     terminated = "terminated"
     expired = "expired"
     completed = "completed"
@@ -74,6 +75,7 @@ class ExamSession(Base):
         DateTime(timezone=True), nullable=True
     )
     consecutive_missed_heartbeats: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    disconnected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     snapshot_interval_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=10_000)
     consent_given: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     consent_given_at: Mapped[datetime | None] = mapped_column(
@@ -180,3 +182,25 @@ class ProctorAlert(Base):
 
     session: Mapped[ExamSession] = relationship("ExamSession", back_populates="alerts")
     event: Mapped[ProctorEvent | None] = relationship("ProctorEvent", back_populates="alerts")
+
+
+class NetworkGap(Base):
+    """Forensic record of a connectivity interruption during a proctored session."""
+
+    __tablename__ = "network_gaps"
+    __table_args__ = {"schema": "exam_svc"}
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("exam_svc.exam_sessions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    disconnected_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    reconnected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    duration_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    missed_heartbeat_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    auto_expired: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
