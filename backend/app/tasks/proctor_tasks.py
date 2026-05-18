@@ -665,3 +665,122 @@ async def _finalize_session_async(session_id: str, reason: str) -> dict:  # type
             )
 
     return {"session_id": session_id, "finalized": True, "reason": reason}
+
+
+# ---------------------------------------------------------------------------
+# E3-15: Identity verification task
+# ---------------------------------------------------------------------------
+
+
+@celery_app.task(name="tasks.verify_identity", bind=True, max_retries=2)
+def verify_identity(self, session_id: str) -> dict:  # type: ignore[type-arg]
+    """Download identity selfie, validate face+ID with Claude Vision (FR-3.15)."""
+    try:
+        return asyncio.run(_verify_identity_async(session_id))
+    except Exception as exc:
+        raise self.retry(exc=exc, countdown=30) from exc
+
+
+async def _verify_identity_async(session_id: str) -> dict:  # type: ignore[type-arg]
+    import base64 as _b64
+
+    from anthropic import Anthropic
+
+    from app.core.database import celery_db
+    from app.domain.models.proctor import ExamSession  # type: ignore[attr-defined]
+
+    async with celery_db() as db:
+        session = await db.get(ExamSession, _uuid_module.UUID(session_id))
+        if not session or not session.identity_selfie_key:
+            logger.warning("verify_identity_session_or_key_missing", session_id=session_id)
+            return {"error": "session_or_key_missing"}
+
+        session.identity_status = "analyzing"
+        await db.commit()
+
+        # Download selfie from MinIO
+        from app.infrastructure.storage import get_exam_storage
+
+        storage = get_exam_storage()
+        image_bytes = await storage.download(session.identity_selfie_key)
+        image_b64 = _b64.b64encode(image_bytes).decode()
+
+        # Claude Vision — forced tool use
+        client = Anthropic(api_key=settings.exam_anthropic_api_key or None)
+        response = client.messages.create(
+            model=settings.anthropic_model,
+            max_tokens=256,
+            system=[
+                {
+                    "type": "text",
+                    "text": (
+                        "You are an identity verification AI for remote exam admission. "
+                        "Always call report_identity_check — never respond with free text. "
+                        "Confirm the student holds a government-issued photo ID in front of "
+                        "the webcam. REQUIRED: both a live human face AND a physical ID card "
+                        "must be clearly visible in the same frame."
+                    ),
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ],
+            tools=[
+                {
+                    "name": "report_identity_check",
+                    "description": "Report identity verification result",
+                    "input_schema": {
+                        "type": "object",
+                        "properties": {
+                            "face_visible": {"type": "boolean"},
+                            "id_visible": {"type": "boolean"},
+                            "face_matches_id": {"type": "boolean"},
+                            "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+                            "reason": {"type": "string"},
+                        },
+                        "required": [
+                            "face_visible",
+                            "id_visible",
+                            "face_matches_id",
+                            "confidence",
+                            "reason",
+                        ],
+                    },
+                }
+            ],
+            tool_choice={"type": "tool", "name": "report_identity_check"},
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": "image/jpeg",
+                                "data": image_b64,
+                            },
+                        }
+                    ],
+                }
+            ],
+        )
+
+        result = response.content[0].input  # type: ignore[union-attr]
+        verified = (
+            bool(result.get("face_visible"))
+            and bool(result.get("id_visible"))
+            and float(result.get("confidence", 0)) >= 0.70
+        )
+
+        session.identity_status = "verified" if verified else "failed"
+        session.identity_verified = verified
+        if verified:
+            session.identity_verified_at = datetime.now(UTC)
+
+        await db.commit()
+        logger.info(
+            "verify_identity_complete",
+            session_id=session_id,
+            verified=verified,
+            reason=result.get("reason"),
+        )
+        return {"verified": verified, "result": result}

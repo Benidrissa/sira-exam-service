@@ -8,6 +8,9 @@ import {
   getReferenceFrameUploadUrl,
   recordReferenceFrame,
   giveConsent,
+  getIdentitySelfieUploadUrl,
+  recordIdentitySelfie,
+  getIdentityStatus,
 } from "@/lib/api";
 
 // ---------------------------------------------------------------------------
@@ -149,7 +152,7 @@ export default function PreCheckPage() {
           />
         )}
         {step === 3 && (
-          <IdentityCheckStep onNext={() => setStep(4)} />
+          <IdentityCheckStep sessionId={sessionId} onNext={() => setStep(4)} />
         )}
         {step === 4 && (
           <ConsentStep
@@ -481,13 +484,24 @@ function CameraPreviewStep({
 }
 
 // ---------------------------------------------------------------------------
-// Step 3 — Identity Check
+// Step 3 — Identity Check (E3-15)
 // ---------------------------------------------------------------------------
-function IdentityCheckStep({ onNext }: { onNext: () => void }) {
+const MAX_IDENTITY_ATTEMPTS = 3;
+
+function IdentityCheckStep({
+  sessionId,
+  onNext,
+}: {
+  sessionId: string | null;
+  onNext: () => void;
+}) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const [thumbnail, setThumbnail] = useState<string | null>(null);
-  const [capturing, setCapturing] = useState(false);
+  const [verifyState, setVerifyState] = useState<"idle" | "uploading" | "verifying" | "verified" | "failed">("idle");
+  const [rejectionReason, setRejectionReason] = useState<string | null>(null);
+  const [attemptCount, setAttemptCount] = useState(0);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     navigator.mediaDevices
@@ -496,56 +510,136 @@ function IdentityCheckStep({ onNext }: { onNext: () => void }) {
         streamRef.current = stream;
         if (videoRef.current) videoRef.current.srcObject = stream;
       })
-      .catch((e) => console.error("Camera error:", e));
-
-    return () => {
-      streamRef.current?.getTracks().forEach((t) => t.stop());
-    };
+      .catch((e) => setError(`Camera error: ${e instanceof Error ? e.message : String(e)}`));
+    return () => { streamRef.current?.getTracks().forEach((t) => t.stop()); };
   }, []);
 
-  const captureId = useCallback(() => {
+  const captureAndVerify = useCallback(async () => {
     const video = videoRef.current;
-    if (!video || !video.videoWidth) return;
-    setCapturing(true);
+    if (!video || !video.videoWidth || !sessionId) return;
+
+    // Capture frame from video
     const canvas = document.createElement("canvas");
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     canvas.getContext("2d")?.drawImage(video, 0, 0);
-    setThumbnail(canvas.toDataURL("image/jpeg", 0.9));
-    setCapturing(false);
-  }, []);
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.90);
+    setThumbnail(dataUrl);
+    setVerifyState("uploading");
+    setRejectionReason(null);
+    setError(null);
+
+    try {
+      // 1. Get presigned URL
+      const { upload_url, storage_key } = await getIdentitySelfieUploadUrl(sessionId);
+
+      // 2. PUT blob to MinIO
+      const blob = await (await fetch(dataUrl)).blob();
+      const putRes = await fetch(upload_url, { method: "PUT", body: blob, headers: { "Content-Type": "image/jpeg" } });
+      if (!putRes.ok) throw new Error(`Upload failed (${putRes.status})`);
+
+      // 3. Record the upload — enqueues Celery task
+      await recordIdentitySelfie(sessionId, storage_key);
+      setVerifyState("verifying");
+      setAttemptCount((c) => c + 1);
+
+      // 4. Poll status (max 30s, every 2s)
+      for (let i = 0; i < 15; i++) {
+        await new Promise((r) => setTimeout(r, 2000));
+        const status = await getIdentityStatus(sessionId);
+        if (status.identity_status === "verified") {
+          setVerifyState("verified");
+          return;
+        }
+        if (status.identity_status === "failed") {
+          setVerifyState("failed");
+          setRejectionReason("Your face or ID was not clearly visible. Please try again.");
+          return;
+        }
+      }
+      // Timeout
+      setVerifyState("failed");
+      setRejectionReason("Verification timed out. Please try again.");
+    } catch (e) {
+      setVerifyState("failed");
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }, [sessionId]);
+
+  const canRetry = attemptCount < MAX_IDENTITY_ATTEMPTS;
 
   return (
     <div className="space-y-4">
-      <h2 className="text-xl font-bold">Step 3 — Identity Check</h2>
+      <h2 className="text-xl font-bold">Step 3 — Identity Verification</h2>
       <p className="text-sm text-gray-500">
-        Please hold your ID up to the camera and click <strong>Capture</strong>.
+        Hold your government-issued ID next to your face and click{" "}
+        <strong>Capture & Verify</strong>.
       </p>
 
-      <div className="rounded-lg overflow-hidden bg-black aspect-video">
+      {/* Positioning guide overlay */}
+      <div className="relative rounded-lg overflow-hidden bg-black aspect-video">
         <video ref={videoRef} autoPlay muted playsInline className="w-full h-full object-cover" />
+        {/* Face guide */}
+        <div className="absolute inset-0 pointer-events-none flex items-center justify-around px-8">
+          <div className="border-2 border-dashed border-white/60 rounded-full w-28 h-36 flex items-center justify-center">
+            <span className="text-white/60 text-xs text-center">Face here</span>
+          </div>
+          <div className="border-2 border-dashed border-white/60 rounded w-36 h-24 flex items-center justify-center">
+            <span className="text-white/60 text-xs text-center">ID here</span>
+          </div>
+        </div>
       </div>
 
-      {thumbnail && (
-        <div className="space-y-1">
-          <p className="text-xs text-gray-500 font-medium">Captured ID photo:</p>
+      {/* Thumbnail preview */}
+      {thumbnail && verifyState !== "idle" && (
+        <div className="flex items-start gap-3">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={thumbnail} alt="ID photo" className="w-32 h-24 rounded border object-cover" />
+          <img src={thumbnail} alt="Captured" className="w-24 h-16 rounded border object-cover shrink-0" />
+          <div className="text-sm">
+            {verifyState === "uploading" && <p className="text-gray-500">Uploading…</p>}
+            {verifyState === "verifying" && <p className="text-blue-600 font-medium">Verifying with AI… (up to 15s)</p>}
+            {verifyState === "verified" && (
+              <p className="text-emerald-600 font-semibold">✅ Identity verified</p>
+            )}
+            {verifyState === "failed" && (
+              <div>
+                <p className="text-red-600 font-medium">❌ Verification failed</p>
+                {rejectionReason && <p className="text-xs text-gray-500 mt-0.5">{rejectionReason}</p>}
+                {!canRetry && (
+                  <p className="text-xs text-amber-600 mt-1">
+                    Maximum attempts reached. A proctor will review your identity.
+                  </p>
+                )}
+              </div>
+            )}
+            {error && <p className="text-xs text-red-500 mt-1">{error}</p>}
+          </div>
         </div>
       )}
 
-      {!thumbnail ? (
+      {/* Action buttons */}
+      {verifyState === "verified" ? (
         <button
-          onClick={captureId}
-          disabled={capturing}
-          className="w-full rounded-lg bg-gray-800 py-2.5 text-sm font-medium text-white hover:bg-gray-900 disabled:opacity-40 transition">
-          {capturing ? "Capturing…" : "Capture"}
+          onClick={onNext}
+          className="w-full rounded-lg bg-emerald-600 py-2.5 text-sm font-medium text-white hover:bg-emerald-700 transition">
+          Continue →
+        </button>
+      ) : verifyState === "failed" && !canRetry ? (
+        // 3rd failure: block but allow continuing (proctor will review)
+        <button
+          onClick={onNext}
+          className="w-full rounded-lg bg-amber-600 py-2.5 text-sm font-medium text-white hover:bg-amber-700 transition">
+          Continue (proctor review pending)
         </button>
       ) : (
         <button
-          onClick={onNext}
-          className="w-full rounded-lg bg-blue-600 py-2.5 text-sm font-medium text-white hover:bg-blue-700 transition">
-          Continue
+          onClick={captureAndVerify}
+          disabled={verifyState === "uploading" || verifyState === "verifying" || !sessionId}
+          className="w-full rounded-lg bg-gray-800 py-2.5 text-sm font-medium text-white hover:bg-gray-900 disabled:opacity-40 transition">
+          {verifyState === "uploading" ? "Uploading…"
+            : verifyState === "verifying" ? "Verifying…"
+            : verifyState === "failed" ? `Retake (attempt ${attemptCount + 1}/${MAX_IDENTITY_ATTEMPTS})`
+            : "Capture & Verify"}
         </button>
       )}
     </div>
