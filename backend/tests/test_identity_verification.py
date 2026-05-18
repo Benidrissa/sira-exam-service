@@ -1,4 +1,5 @@
 """Tests for E3-15: Pre-exam selfie + ID identity verification."""
+
 from __future__ import annotations
 
 import uuid
@@ -11,6 +12,7 @@ from tests.conftest import ORG_A
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_session(
     verified: bool = False,
@@ -39,9 +41,7 @@ async def test_get_identity_selfie_upload_url_returns_url_and_key() -> None:
     from app.infrastructure.exam_evidence import get_identity_selfie_upload_url
 
     session_id = str(uuid.uuid4())
-    with patch(
-        "app.infrastructure.exam_evidence.get_exam_storage"
-    ) as mock_get_storage:
+    with patch("app.infrastructure.exam_evidence.get_exam_storage") as mock_get_storage:
         mock_storage = AsyncMock()
         mock_storage.presigned_put_url = AsyncMock(return_value="https://minio/identity-url")
         mock_get_storage.return_value = mock_storage
@@ -71,8 +71,10 @@ async def test_identity_selfie_recorded_sets_pending_and_enqueues(mock_db: Async
     user.user_id = str(session.user_id)
     user.org_id = str(ORG_A)
 
-    with patch("app.api.v1.proctor._get_session_or_404", return_value=session), \
-         patch("app.api.v1.proctor.verify_identity") as mock_task:
+    with (
+        patch("app.api.v1.proctor._get_session_or_404", return_value=session),
+        patch("app.api.v1.proctor.verify_identity") as mock_task,
+    ):
         mock_task.delay = MagicMock()
         result = await identity_selfie_recorded(
             session_id=session.id,
@@ -100,8 +102,10 @@ async def test_identity_selfie_recorded_already_verified_returns_409(mock_db: As
     user.user_id = str(session.user_id)
     user.org_id = str(ORG_A)
 
-    with patch("app.api.v1.proctor._get_session_or_404", return_value=session), \
-         pytest.raises(HTTPException) as exc_info:
+    with (
+        patch("app.api.v1.proctor._get_session_or_404", return_value=session),
+        pytest.raises(HTTPException) as exc_info,
+    ):
         await identity_selfie_recorded(
             session_id=session.id,
             body=IdentitySelfieRecordedRequest(storage_key="identity_selfies/sid/123.jpg"),
@@ -162,11 +166,12 @@ async def test_verify_identity_async_sets_verified_on_claude_pass() -> None:
     mock_response = MagicMock()
     mock_response.content = [mock_content]
 
-    with patch("app.tasks.proctor_tasks.asyncio") as _mock_asyncio, \
-         patch("app.core.database.celery_db") as mock_celery_db_cls, \
-         patch("app.infrastructure.storage.get_exam_storage") as _mock_storage_factory, \
-         patch("anthropic.Anthropic") as mock_anthropic_cls:
-
+    with (
+        patch("app.tasks.proctor_tasks.asyncio") as _mock_asyncio,
+        patch("app.core.database.celery_db") as mock_celery_db_cls,
+        patch("app.infrastructure.storage.get_exam_storage") as _mock_storage_factory,
+        patch("anthropic.Anthropic") as mock_anthropic_cls,
+    ):
         mock_db_ctx = AsyncMock()
         mock_db_ctx.__aenter__ = AsyncMock(return_value=mock_db_ctx)
         mock_db_ctx.__aexit__ = AsyncMock(return_value=False)
@@ -209,10 +214,11 @@ async def test_verify_identity_async_sets_failed_when_no_id() -> None:
     mock_response = MagicMock()
     mock_response.content = [mock_content]
 
-    with patch("app.core.database.celery_db") as mock_celery_db_cls, \
-         patch("app.infrastructure.storage.get_exam_storage") as _mock_storage_factory, \
-         patch("anthropic.Anthropic") as mock_anthropic_cls:
-
+    with (
+        patch("app.core.database.celery_db") as mock_celery_db_cls,
+        patch("app.infrastructure.storage.get_exam_storage") as _mock_storage_factory,
+        patch("anthropic.Anthropic") as mock_anthropic_cls,
+    ):
         mock_db_ctx = AsyncMock()
         mock_db_ctx.__aenter__ = AsyncMock(return_value=mock_db_ctx)
         mock_db_ctx.__aexit__ = AsyncMock(return_value=False)

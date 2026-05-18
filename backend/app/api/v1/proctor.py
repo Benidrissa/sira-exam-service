@@ -297,7 +297,9 @@ async def reference_frame_recorded(
 # ---------------------------------------------------------------------------
 
 
-@router.get("/sessions/{session_id}/identity/upload-url", response_model=IdentitySelfieUploadUrlResponse)
+@router.get(
+    "/sessions/{session_id}/identity/upload-url", response_model=IdentitySelfieUploadUrlResponse
+)
 async def get_identity_selfie_upload_url_endpoint(
     session_id: uuid.UUID,
     db: DB,
@@ -308,7 +310,9 @@ async def get_identity_selfie_upload_url_endpoint(
     if session.user_id != _uid(user):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden.")
     if session.identity_verified:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Identity already verified.")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="Identity already verified."
+        )
     url, key = await get_identity_selfie_upload_url(str(session_id))
     return IdentitySelfieUploadUrlResponse(upload_url=url, storage_key=key)
 
@@ -329,7 +333,9 @@ async def identity_selfie_recorded(
     if session.user_id != _uid(user):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden.")
     if session.identity_verified:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Identity already verified.")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="Identity already verified."
+        )
     session.identity_selfie_key = body.storage_key
     session.identity_status = "pending"
     await db.commit()

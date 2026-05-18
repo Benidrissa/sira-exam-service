@@ -243,10 +243,10 @@ class EdgeResultRequest(BaseModel):
     violation_type: str = "none"
 
 
-
 # ---------------------------------------------------------------------------
 # E3-15: Identity verification schemas
 # ---------------------------------------------------------------------------
+
 
 class IdentitySelfieUploadUrlResponse(BaseModel):
     upload_url: str

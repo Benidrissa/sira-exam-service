@@ -45,5 +45,10 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    for col in ("identity_verified_at", "identity_status", "identity_selfie_key", "identity_verified"):
+    for col in (
+        "identity_verified_at",
+        "identity_status",
+        "identity_selfie_key",
+        "identity_verified",
+    ):
         op.drop_column("exam_sessions", col, schema=_SCHEMA)
