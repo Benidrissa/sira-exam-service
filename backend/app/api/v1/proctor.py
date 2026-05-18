@@ -13,6 +13,7 @@ from app.core.config import settings
 from app.domain.models.proctor import ExamSession, ProctorSnapshot, SessionStatus
 from app.domain.services import proctor_session_service
 from app.infrastructure.exam_evidence import (
+    get_identity_selfie_upload_url,
     get_offline_frame_upload_url,
     get_reference_frame_upload_url,
     get_snapshot_upload_url,
@@ -25,6 +26,9 @@ from app.schemas.proctor import (
     HeartbeatResponse,
     HeartbeatResumeRequest,
     HeartbeatResumeResponse,
+    IdentitySelfieRecordedRequest,
+    IdentitySelfieUploadUrlResponse,
+    IdentityStatusResponse,
     OfflineFrameBatchRecordedRequest,
     OfflineFrameBatchRecordedResponse,
     OfflineFrameUploadUrlRequest,
@@ -46,7 +50,7 @@ from app.schemas.proctor import (
     VLMConfigResponse,
     VLMModelInfo,
 )
-from app.tasks.proctor_tasks import analyze_snapshot
+from app.tasks.proctor_tasks import analyze_snapshot, verify_identity
 
 router = APIRouter(prefix="/proctor", tags=["proctor"])
 
@@ -285,6 +289,73 @@ async def reference_frame_recorded(
     return ReferenceFrameRecordedResponse(
         session_id=session.id,
         reference_frame_key=session.reference_frame_key or body.storage_key,
+    )
+
+
+# ---------------------------------------------------------------------------
+# E3-15: Identity verification
+# ---------------------------------------------------------------------------
+
+
+@router.get("/sessions/{session_id}/identity/upload-url", response_model=IdentitySelfieUploadUrlResponse)
+async def get_identity_selfie_upload_url_endpoint(
+    session_id: uuid.UUID,
+    db: DB,
+    user: CurrentUser,
+) -> IdentitySelfieUploadUrlResponse:
+    """Return a presigned PUT URL for uploading the pre-exam identity selfie (FR-3.15)."""
+    session = await _get_session_or_404(db, session_id, _org(user))
+    if session.user_id != _uid(user):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden.")
+    if session.identity_verified:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Identity already verified.")
+    url, key = await get_identity_selfie_upload_url(str(session_id))
+    return IdentitySelfieUploadUrlResponse(upload_url=url, storage_key=key)
+
+
+@router.post(
+    "/sessions/{session_id}/identity/recorded",
+    response_model=IdentityStatusResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def identity_selfie_recorded(
+    session_id: uuid.UUID,
+    body: IdentitySelfieRecordedRequest,
+    db: DB,
+    user: CurrentUser,
+) -> IdentityStatusResponse:
+    """Record a selfie+ID upload and enqueue Claude Vision validation (FR-3.15)."""
+    session = await _get_session_or_404(db, session_id, _org(user))
+    if session.user_id != _uid(user):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden.")
+    if session.identity_verified:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Identity already verified.")
+    session.identity_selfie_key = body.storage_key
+    session.identity_status = "pending"
+    await db.commit()
+    await db.refresh(session)
+    verify_identity.delay(str(session_id))
+    return IdentityStatusResponse(
+        session_id=session.id,
+        identity_verified=session.identity_verified,
+        identity_status=session.identity_status,
+        identity_verified_at=session.identity_verified_at,
+    )
+
+
+@router.get("/sessions/{session_id}/identity/status", response_model=IdentityStatusResponse)
+async def get_identity_status(
+    session_id: uuid.UUID,
+    db: DB,
+    user: CurrentUser,
+) -> IdentityStatusResponse:
+    """Poll identity verification result (FR-3.15)."""
+    session = await _get_session_or_404(db, session_id, _org(user))
+    return IdentityStatusResponse(
+        session_id=session.id,
+        identity_verified=session.identity_verified,
+        identity_status=session.identity_status,
+        identity_verified_at=session.identity_verified_at,
     )
 
 

@@ -241,3 +241,26 @@ class EdgeResultRequest(BaseModel):
     edge_inference_ms: int
     model_version: str
     violation_type: str = "none"
+
+
+
+# ---------------------------------------------------------------------------
+# E3-15: Identity verification schemas
+# ---------------------------------------------------------------------------
+
+class IdentitySelfieUploadUrlResponse(BaseModel):
+    upload_url: str
+    storage_key: str
+
+
+class IdentitySelfieRecordedRequest(BaseModel):
+    storage_key: str
+
+
+class IdentityStatusResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    session_id: uuid.UUID
+    identity_verified: bool
+    identity_status: str | None
+    identity_verified_at: datetime | None

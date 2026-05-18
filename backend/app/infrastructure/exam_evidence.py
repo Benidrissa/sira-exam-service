@@ -59,6 +59,24 @@ async def get_offline_frame_upload_url(session_id: str, snapshot_id: str) -> tup
     return url, key
 
 
+_IDENTITY_SELFIE_UPLOAD_EXPIRY = 300  # 5 minutes
+
+
+async def get_identity_selfie_upload_url(session_id: str) -> tuple[str, str]:
+    """Return (presigned_put_url, storage_key) for uploading a pre-exam identity selfie.
+
+    Key format: ``identity_selfies/<session_id>/<epoch_ms>.jpg``
+    """
+    from datetime import UTC, datetime
+
+    ts = int(datetime.now(UTC).timestamp() * 1000)
+    key = f"identity_selfies/{session_id}/{ts}.jpg"
+    storage = get_exam_storage()
+    url = await storage.presigned_put_url(key, expiry=_IDENTITY_SELFIE_UPLOAD_EXPIRY)
+    logger.debug("identity_selfie_upload_url_issued", session_id=session_id)
+    return url, key
+
+
 async def ensure_exam_evidence_bucket() -> None:
     """Create the exam-evidence bucket if it does not already exist."""
     storage = get_exam_storage()

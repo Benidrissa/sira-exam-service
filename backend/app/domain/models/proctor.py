@@ -6,7 +6,7 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Enum, Float, ForeignKey, Integer, Text, func
+from sqlalchemy import Boolean, DateTime, Enum, Float, ForeignKey, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -84,6 +84,15 @@ class ExamSession(Base):
     reference_frame_key: Mapped[str | None] = mapped_column(Text, nullable=True)
     termination_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     edge_metadata: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # E3-15: pre-exam identity verification
+    identity_verified: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    identity_selfie_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    identity_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    identity_verified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     # Relationships
     attempt: Mapped[ExamAttempt] = relationship(  # type: ignore[name-defined]  # noqa: F821

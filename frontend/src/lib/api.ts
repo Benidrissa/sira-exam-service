@@ -350,3 +350,31 @@ export async function heartbeatResume(
     },
   );
 }
+
+// ---------------------------------------------------------------------------
+// E3-15: Identity verification
+// ---------------------------------------------------------------------------
+
+export async function getIdentitySelfieUploadUrl(
+  sessionId: string,
+): Promise<{ upload_url: string; storage_key: string }> {
+  return apiFetch<{ upload_url: string; storage_key: string }>(
+    `/proctor/sessions/${sessionId}/identity/upload-url`,
+  );
+}
+
+export async function recordIdentitySelfie(
+  sessionId: string,
+  storageKey: string,
+): Promise<{ session_id: string; identity_verified: boolean; identity_status: string | null }> {
+  return apiFetch(`/proctor/sessions/${sessionId}/identity/recorded`, {
+    method: "POST",
+    body: JSON.stringify({ storage_key: storageKey }),
+  });
+}
+
+export async function getIdentityStatus(
+  sessionId: string,
+): Promise<{ session_id: string; identity_verified: boolean; identity_status: string | null; identity_verified_at: string | null }> {
+  return apiFetch(`/proctor/sessions/${sessionId}/identity/status`);
+}
