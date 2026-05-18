@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import {
   listScenarios,
   listQuestions,
@@ -9,22 +9,42 @@ import {
   patchQuestion,
   validateQuestion,
   validateAll,
+  apiFetch,
 } from "@/lib/api";
 import type { ExamScenario, ExamQuestion } from "@/types/exam";
 import { useDebounce } from "@/hooks/use-debounce";
 import { Button } from "@/components/ui/button";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Card, CardHeader, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { cn } from "@/lib/utils";
-import { CheckCircle2, ChevronDown, ChevronUp, Copy } from "lucide-react";
+import {
+  CheckCircle2, ChevronDown, ChevronUp, Copy, Plus, Trash2, Check,
+} from "lucide-react";
 
+// ─── API helpers not yet in api.ts ──────────────────────────────────────────
+function createQuestion(
+  bankId: string,
+  data: {
+    scenario_id: string;
+    question_type: "mcq" | "dissertation";
+    description: string;
+    options?: Array<{ label: string; text: string }>;
+    correct_answer_indices?: number[];
+  },
+): Promise<ExamQuestion> {
+  return apiFetch<ExamQuestion>(`/exam/banks/${bankId}/question`, {
+    method: "POST",
+    body: JSON.stringify({ ...data, ai_generated: false, order_index: 9999 }),
+  });
+}
+
+// ─── Main page ───────────────────────────────────────────────────────────────
 export default function ReviewBoardPage() {
   const { bankId, locale } = useParams<{ bankId: string; locale: string }>();
-  const router = useRouter();
   const [scenarios, setScenarios] = useState<ExamScenario[]>([]);
   const [questions, setQuestions] = useState<ExamQuestion[]>([]);
   const [loading, setLoading] = useState(true);
@@ -41,134 +61,111 @@ export default function ReviewBoardPage() {
       .finally(() => setLoading(false));
   }, [bankId]);
 
-  const questionsByScenario = useCallback((scenarioId: string) =>
-    questions.filter((q) => q.scenario_id === scenarioId)
-      .sort((a, b) => a.order_index - b.order_index),
-    [questions]);
+  const questionsByScenario = useCallback(
+    (scenarioId: string) =>
+      questions
+        .filter((q) => q.scenario_id === scenarioId)
+        .sort((a, b) => a.order_index - b.order_index),
+    [questions],
+  );
 
   async function handleValidateAll() {
     setPublishState("publishing");
     try {
       await validateAll(bankId);
+      const res = await apiFetch<{ id: string; status: string }[]>(
+        `/exam/banks/${bankId}/tests`,
+      );
+      if (res.length) {
+        const testId = res[0].id;
+        const link = `${window.location.origin}/${locale}/exams/${testId}/play`;
+        setTestLink(link);
+      }
       setPublishState("done");
-      setQuestions((qs) => qs.map((q) => ({ ...q, validated: true })));
-      try {
-        const API = process.env.NEXT_PUBLIC_EXAM_API_URL ?? "http://localhost:8001/api/v1";
-        let tests = await (await fetch(`${API}/exam/banks/${bankId}/tests`, { credentials: "include" })).json();
-        if (!tests.length) {
-          const res = await fetch(`${API}/exam/banks/${bankId}/tests`, {
-            method: "POST", credentials: "include",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ title: "Exam", time_limit_minutes: 60, shuffle_questions: true }),
-          });
-          tests = [await res.json()];
-        }
-        if (tests[0]?.id) {
-          setTestLink(`${window.location.origin}/${locale}/exams/${tests[0].id}/play`);
-        }
-      } catch { /* ignore — bank is published even if test link fetch fails */ }
     } catch (e) {
-      setError(String(e));
+      setSaveError(e instanceof Error ? e.message : String(e));
       setPublishState("error");
     }
   }
 
-  async function handleCopy() {
-    if (!testLink) return;
-    await navigator.clipboard.writeText(testLink);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  async function handleAddQuestion(scenarioId: string, type: "mcq" | "dissertation") {
+    try {
+      const defaultOptions =
+        type === "mcq"
+          ? [
+              { label: "A", text: "Option A" },
+              { label: "B", text: "Option B" },
+              { label: "C", text: "Option C" },
+              { label: "D", text: "Option D" },
+            ]
+          : undefined;
+      const newQ = await createQuestion(bankId, {
+        scenario_id: scenarioId,
+        question_type: type,
+        description: type === "mcq" ? "New MCQ question" : "New dissertation question",
+        options: defaultOptions,
+        correct_answer_indices: type === "mcq" ? [0] : undefined,
+      });
+      setQuestions((prev) => [...prev, newQ]);
+    } catch (e) {
+      setSaveError(`Failed to add question: ${e instanceof Error ? e.message : String(e)}`);
+    }
   }
 
   if (loading) return (
-    <main className="max-w-3xl mx-auto p-8">
-      <div className="space-y-4">
-        {[1, 2, 3].map((i) => (
-          <div key={i} className="h-32 animate-pulse rounded-xl bg-muted" />
-        ))}
-      </div>
-    </main>
+    <div className="flex items-center justify-center p-12 gap-2 text-sm text-muted-foreground">
+      <LoadingSpinner className="h-4 w-4" /> Loading review board…
+    </div>
   );
-
-  if (error) return (
-    <main className="max-w-3xl mx-auto p-8">
-      <Alert variant="destructive">
-        <AlertTitle>Failed to load</AlertTitle>
-        <AlertDescription>
-          {error}
-          <button onClick={() => router.back()} className="mt-2 block text-sm underline">
-            Go back
-          </button>
-        </AlertDescription>
-      </Alert>
-    </main>
-  );
+  if (error) return <p className="p-8 text-sm text-destructive">{error}</p>;
 
   const allValidated = questions.length > 0 && questions.every((q) => q.validated);
+  const validatedCount = questions.filter((q) => q.validated).length;
 
   return (
-    <main className="max-w-3xl mx-auto p-6 pb-12 space-y-5">
+    <div className="max-w-3xl mx-auto px-6 py-8 space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between gap-4 flex-wrap">
+      <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold">Review &amp; Edit</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            {questions.length} questions · {scenarios.length} scenarios
+          <h1 className="text-2xl font-bold">Review & Edit</h1>
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            {questions.length} questions · {scenarios.length} scenarios ·{" "}
+            {validatedCount}/{questions.length} validated
           </p>
         </div>
-        <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex flex-col items-end gap-2 shrink-0">
           {saveError && (
-            <Alert variant="destructive" className="py-2 px-3 text-xs w-auto">
-              <AlertDescription>{saveError}</AlertDescription>
-            </Alert>
+            <p className="text-xs text-destructive max-w-xs text-right">{saveError}</p>
           )}
-          {publishState === "done" ? (
-            <Badge variant="success" className="text-sm px-3 py-1.5 rounded-lg">
-              <CheckCircle2 className="mr-1.5" />
-              Published
-            </Badge>
+          {publishState === "done" && testLink ? (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground truncate max-w-48">{testLink}</span>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => { navigator.clipboard.writeText(testLink); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
+              >
+                {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+              </Button>
+            </div>
           ) : (
             <Button
-              disabled={publishState === "publishing" || questions.length === 0}
+              disabled={publishState === "publishing"}
               onClick={handleValidateAll}
             >
               {publishState === "publishing" ? (
-                <>
-                  <LoadingSpinner className="mr-1.5 h-4 w-4" />
-                  Publishing…
-                </>
+                <><LoadingSpinner className="h-4 w-4" /> Publishing…</>
               ) : allValidated ? "Publish Bank" : "Validate All & Publish"}
             </Button>
           )}
         </div>
       </div>
 
-      {/* Test link banner after publish */}
-      {testLink && (
-        <Alert variant="success">
-          <CheckCircle2 className="h-4 w-4" />
-          <AlertTitle>Bank published! Share this link with students:</AlertTitle>
-          <AlertDescription>
-            <div className="flex items-center gap-2 mt-2">
-              <code className="flex-1 rounded-lg border border-emerald-200 bg-white/60 px-3 py-1.5 text-xs truncate">
-                {testLink}
-              </code>
-              <Button size="sm" variant="outline" onClick={handleCopy} className="shrink-0">
-                <Copy className="mr-1 h-3 w-3" />
-                {copied ? "Copied!" : "Copy"}
-              </Button>
-            </div>
-          </AlertDescription>
-        </Alert>
-      )}
-
       {/* Zero-questions warning */}
       {questions.length === 0 && (
         <Alert variant="warning">
           <AlertTitle>No questions yet</AlertTitle>
-          <AlertDescription>
-            No questions generated yet. Go back and trigger generation first.
-          </AlertDescription>
+          <AlertDescription>No questions generated yet. Go back and trigger generation first.</AlertDescription>
         </Alert>
       )}
 
@@ -177,26 +174,34 @@ export default function ReviewBoardPage() {
         <ScenarioCard
           key={scenario.id}
           bankId={bankId}
-          onSaveError={(msg) => { setSaveError(msg); setTimeout(() => setSaveError(null), 3000); }}
           scenario={scenario}
           questions={questionsByScenario(scenario.id)}
           onQuestionUpdate={(updated) =>
-            setQuestions((qs) => qs.map((q) => q.id === updated.id ? updated : q))}
+            setQuestions((prev) => prev.map((q) => q.id === updated.id ? updated : q))
+          }
+          onQuestionAdd={(type) => handleAddQuestion(scenario.id, type)}
+          onSaveError={setSaveError}
         />
       ))}
 
       {scenarios.length === 0 && (
-        <p className="text-sm text-muted-foreground text-center py-12">No scenarios generated yet.</p>
+        <p className="text-sm text-muted-foreground text-center py-12">
+          No scenarios generated yet.
+        </p>
       )}
-    </main>
+    </div>
   );
 }
 
-function ScenarioCard({ bankId, scenario, questions, onQuestionUpdate, onSaveError }: {
+// ─── Scenario card ───────────────────────────────────────────────────────────
+function ScenarioCard({
+  bankId, scenario, questions, onQuestionUpdate, onQuestionAdd, onSaveError,
+}: {
   bankId: string;
   scenario: ExamScenario;
   questions: ExamQuestion[];
   onQuestionUpdate: (q: ExamQuestion) => void;
+  onQuestionAdd: (type: "mcq" | "dissertation") => void;
   onSaveError: (msg: string) => void;
 }) {
   const [title, setTitle] = useState(scenario.title);
@@ -206,16 +211,11 @@ function ScenarioCard({ bankId, scenario, questions, onQuestionUpdate, onSaveErr
     useCallback(async (val: string) => {
       setSaving(true);
       try { await patchScenario(bankId, scenario.id, { title: val }); }
-      catch (e) { onSaveError(`Failed to save scenario: ${e instanceof Error ? e.message : String(e)}`); }
+      catch (e) { onSaveError(`Scenario save failed: ${e instanceof Error ? e.message : String(e)}`); }
       finally { setSaving(false); }
     }, [bankId, scenario.id, onSaveError]),
     600,
   );
-
-  function handleTitleChange(val: string) {
-    setTitle(val);
-    saveTitle(val);
-  }
 
   return (
     <Card className="mb-4">
@@ -224,11 +224,12 @@ function ScenarioCard({ bankId, scenario, questions, onQuestionUpdate, onSaveErr
           <Input
             className="flex-1 border-transparent bg-transparent font-bold text-base hover:border-input focus:border-input px-2"
             value={title}
-            onChange={(e) => handleTitleChange(e.target.value)}
+            onChange={(e) => { setTitle(e.target.value); saveTitle(e.target.value); }}
           />
           {saving && <span className="text-xs text-muted-foreground shrink-0">Saving…</span>}
         </div>
       </CardHeader>
+
       <CardContent className="pt-0 px-0 pb-0">
         <div className="divide-y divide-border">
           {questions.map((q) => (
@@ -241,37 +242,105 @@ function ScenarioCard({ bankId, scenario, questions, onQuestionUpdate, onSaveErr
             />
           ))}
           {questions.length === 0 && (
-            <p className="py-4 text-center text-xs text-muted-foreground">No questions</p>
+            <p className="py-4 text-center text-xs text-muted-foreground">No questions in this scenario</p>
           )}
+        </div>
+
+        {/* Add question buttons */}
+        <div className="flex items-center gap-2 px-5 py-3 border-t border-border">
+          <Button
+            size="sm" variant="ghost"
+            className="text-xs text-muted-foreground hover:text-foreground"
+            onClick={() => onQuestionAdd("mcq")}
+          >
+            <Plus className="h-3.5 w-3.5 mr-1" /> Add MCQ
+          </Button>
+          <Button
+            size="sm" variant="ghost"
+            className="text-xs text-muted-foreground hover:text-foreground"
+            onClick={() => onQuestionAdd("dissertation")}
+          >
+            <Plus className="h-3.5 w-3.5 mr-1" /> Add Essay
+          </Button>
         </div>
       </CardContent>
     </Card>
   );
 }
 
-function QuestionRow({ bankId, question, onUpdate, onSaveError }: {
+// ─── Question row ─────────────────────────────────────────────────────────────
+function QuestionRow({
+  bankId, question, onUpdate, onSaveError,
+}: {
   bankId: string;
   question: ExamQuestion;
   onUpdate: (q: ExamQuestion) => void;
   onSaveError: (msg: string) => void;
 }) {
   const [description, setDescription] = useState(question.description);
+  const [options, setOptions] = useState<Array<{ label: string; text: string }>>(
+    question.options ?? [],
+  );
+  const [correctIndices, setCorrectIndices] = useState<number[]>(
+    question.correct_answer_indices ?? [],
+  );
   const [saving, setSaving] = useState(false);
   const [validating, setValidating] = useState(false);
   const [rubricOpen, setRubricOpen] = useState(false);
 
+  // Patch helper — debounced for text edits, immediate for structural changes
+  async function patch(data: Partial<{
+    description: string;
+    options: typeof options;
+    correct_answer_indices: number[];
+  }>) {
+    setSaving(true);
+    try {
+      const updated = await patchQuestion(question.id, bankId, data);
+      onUpdate(updated);
+    } catch (e) {
+      onSaveError(`Save failed: ${e instanceof Error ? e.message : String(e)}`);
+    } finally { setSaving(false); }
+  }
+
   const saveDescription = useDebounce(
-    useCallback(async (val: string) => {
-      setSaving(true);
-      try {
-        const updated = await patchQuestion(question.id, bankId, { description: val });
-        onUpdate(updated);
-      } catch (e) {
-        onSaveError(`Failed to save question: ${e instanceof Error ? e.message : String(e)}`);
-      } finally { setSaving(false); }
-    }, [question.id, bankId, onUpdate, onSaveError]),
+    useCallback((val: string) => patch({ description: val }), [question.id, bankId]),
     600,
   );
+
+  // Toggle correct answer for MCQ
+  async function toggleCorrect(idx: number) {
+    const next = correctIndices.includes(idx)
+      ? correctIndices.filter((i) => i !== idx)
+      : [...correctIndices, idx];
+    setCorrectIndices(next);
+    await patch({ correct_answer_indices: next });
+  }
+
+  // Edit option text
+  async function saveOptionText(idx: number, text: string) {
+    const next = options.map((o, i) => i === idx ? { ...o, text } : o);
+    setOptions(next);
+    await patch({ options: next });
+  }
+
+  // Add new MCQ option
+  async function addOption() {
+    const labels = ["A", "B", "C", "D", "E", "F"];
+    const label = labels[options.length] ?? String(options.length + 1);
+    const next = [...options, { label, text: "New option" }];
+    setOptions(next);
+    await patch({ options: next });
+  }
+
+  // Remove MCQ option
+  async function removeOption(idx: number) {
+    const next = options.filter((_, i) => i !== idx);
+    const newCorrect = correctIndices.filter((i) => i !== idx).map((i) => i > idx ? i - 1 : i);
+    setOptions(next);
+    setCorrectIndices(newCorrect);
+    await patch({ options: next, correct_answer_indices: newCorrect });
+  }
 
   async function handleValidate() {
     setValidating(true);
@@ -279,15 +348,14 @@ function QuestionRow({ bankId, question, onUpdate, onSaveError }: {
       const updated = await validateQuestion(question.id, bankId);
       onUpdate(updated);
     } catch (e) {
-      onSaveError(`Failed to validate: ${e instanceof Error ? e.message : String(e)}`);
+      onSaveError(`Validate failed: ${e instanceof Error ? e.message : String(e)}`);
     } finally { setValidating(false); }
   }
 
   return (
     <div className="px-5 py-4 space-y-3">
-      {/* Main row */}
+      {/* Header row: badge + textarea + validate */}
       <div className="flex items-start gap-3">
-        {/* Left: badge + textarea */}
         <div className="flex-1 flex items-start gap-3 min-w-0">
           <Badge
             variant={question.question_type === "mcq" ? "info" : "purple"}
@@ -299,54 +367,92 @@ function QuestionRow({ bankId, question, onUpdate, onSaveError }: {
             rows={2}
             className="flex-1 min-w-0 border-transparent bg-transparent text-sm hover:border-input focus:border-input resize-none"
             value={description}
-            onChange={(e) => { setDescription(e.target.value); saveDescription(e.target.value); }}
+            onChange={(e) => {
+              setDescription(e.target.value);
+              saveDescription(e.target.value);
+            }}
           />
         </div>
-        {/* Right: saving indicator + validate */}
         <div className="flex flex-col items-end gap-1.5 shrink-0">
           {saving && <span className="text-xs text-muted-foreground">Saving…</span>}
           {question.validated ? (
             <Badge variant="success">
-              <CheckCircle2 className="mr-1" />
-              Validated
+              <CheckCircle2 className="mr-1 h-3 w-3" /> Validated
             </Badge>
           ) : (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={handleValidate}
-              disabled={validating}
-            >
+            <Button size="sm" variant="outline" onClick={handleValidate} disabled={validating}>
               {validating ? <LoadingSpinner className="h-3 w-3" /> : "Validate"}
             </Button>
           )}
         </div>
       </div>
 
-      {/* MCQ options */}
-      {question.question_type === "mcq" && question.options && (
-        <ul className="ml-16 space-y-1">
-          {question.options.map((opt, i) => {
-            const isCorrect = (question.correct_answer_indices ?? []).includes(i);
+      {/* MCQ options — editable, correct-answer clickable */}
+      {question.question_type === "mcq" && (
+        <div className="ml-16 space-y-1.5">
+          {options.map((opt, i) => {
+            const isCorrect = correctIndices.includes(i);
             return (
-              <li
-                key={i}
-                className={cn(
-                  "flex items-center gap-2 text-xs",
-                  isCorrect ? "text-emerald-600 font-medium" : "text-muted-foreground",
-                )}
-              >
-                <span className="h-1.5 w-1.5 rounded-full bg-current shrink-0" />
-                <span className="font-mono">{opt.label}.</span>
-                {opt.text}
-                {isCorrect && <span className="ml-0.5">✓</span>}
-              </li>
+              <div key={i} className="flex items-center gap-2 group">
+                {/* Correct-answer toggle */}
+                <button
+                  title={isCorrect ? "Mark as wrong" : "Mark as correct answer"}
+                  onClick={() => toggleCorrect(i)}
+                  className={cn(
+                    "h-4 w-4 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors",
+                    isCorrect
+                      ? "border-emerald-500 bg-emerald-500 text-white"
+                      : "border-muted-foreground/40 hover:border-emerald-400",
+                  )}
+                >
+                  {isCorrect && <Check className="h-2.5 w-2.5" />}
+                </button>
+                {/* Option label */}
+                <span className={cn(
+                  "text-xs font-mono shrink-0 w-4",
+                  isCorrect ? "text-emerald-600 font-bold" : "text-muted-foreground",
+                )}>
+                  {opt.label}.
+                </span>
+                {/* Option text — inline editable */}
+                <input
+                  className={cn(
+                    "flex-1 text-xs bg-transparent border-0 border-b border-transparent",
+                    "hover:border-muted-foreground/30 focus:border-primary focus:outline-none",
+                    "transition-colors py-0",
+                    isCorrect ? "text-emerald-600 font-medium" : "text-foreground",
+                  )}
+                  value={opt.text}
+                  onChange={(e) => {
+                    const updated = options.map((o, j) => j === i ? { ...o, text: e.target.value } : o);
+                    setOptions(updated);
+                  }}
+                  onBlur={(e) => saveOptionText(i, e.target.value)}
+                />
+                {/* Remove option */}
+                <button
+                  title="Remove option"
+                  onClick={() => removeOption(i)}
+                  className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-all"
+                >
+                  <Trash2 className="h-3 w-3" />
+                </button>
+              </div>
             );
           })}
-        </ul>
+          {/* Add option */}
+          {options.length < 6 && (
+            <button
+              onClick={addOption}
+              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary transition-colors mt-1"
+            >
+              <Plus className="h-3 w-3" /> Add option
+            </button>
+          )}
+        </div>
       )}
 
-      {/* Dissertation rubric (collapsible) */}
+      {/* Dissertation rubric (collapsible, read-only) */}
       {question.question_type === "dissertation" && question.rubric && question.rubric.length > 0 && (
         <div className="ml-16">
           <button
@@ -359,12 +465,9 @@ function QuestionRow({ bankId, question, onUpdate, onSaveError }: {
           {rubricOpen && (
             <div className="mt-2 space-y-1.5">
               {question.rubric.map((r, i) => (
-                <div
-                  key={i}
-                  className="flex items-center justify-between rounded-lg border border-border bg-muted/40 px-3 py-2"
-                >
-                  <span className="text-xs font-medium text-foreground">{r.criterion}</span>
-                  <span className="text-xs rounded-full border border-border bg-background px-2 py-0.5 font-mono">
+                <div key={i} className="flex items-center justify-between rounded-lg border bg-muted/40 px-3 py-2">
+                  <span className="text-xs font-medium">{r.criterion}</span>
+                  <span className="text-xs font-mono border rounded-full bg-background px-2 py-0.5">
                     {r.max_points} pts
                   </span>
                 </div>

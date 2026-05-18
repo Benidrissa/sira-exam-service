@@ -39,9 +39,7 @@ async def test_three_missed_heartbeats_sets_disconnected() -> None:
     mock_gap_scalars.scalars.return_value.first.return_value = None
 
     mock_db = AsyncMock()
-    mock_db.execute = AsyncMock(
-        side_effect=[mock_active_scalars, mock_disconnected_scalars]
-    )
+    mock_db.execute = AsyncMock(side_effect=[mock_active_scalars, mock_disconnected_scalars])
     mock_db.add = MagicMock()
     mock_db.commit = AsyncMock()
     mock_db.__aenter__ = AsyncMock(return_value=mock_db)

@@ -1,4 +1,5 @@
 """Tests for E3-8 — proctor dashboard offline state."""
+
 from __future__ import annotations
 
 import uuid

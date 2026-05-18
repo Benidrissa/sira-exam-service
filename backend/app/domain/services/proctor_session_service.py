@@ -29,17 +29,17 @@ logger = structlog.get_logger(__name__)
 
 ALERT_THRESHOLDS: dict[str, tuple[int, EventSeverity, str]] = {
     # fmt: off
-    "tab_switch":                 (3,  EventSeverity.medium,   "Tab switch threshold reached ({count}x)"),  # noqa: E501
-    "window_blur":                (5,  EventSeverity.low,      "Window focus lost threshold reached ({count}x)"),  # noqa: E501
-    "fullscreen_exit":            (2,  EventSeverity.medium,   "Fullscreen exited {count}x during exam"),  # noqa: E501
-    "clipboard_access":           (3,  EventSeverity.medium,   "Clipboard access threshold reached ({count}x)"),  # noqa: E501
-    "keyboard_shortcut_blocked": (10,  EventSeverity.low,      "Keyboard shortcuts blocked {count}x"),  # noqa: E501
-    "screen_capture_attempt":     (1,  EventSeverity.critical, "Screen capture attempted"),
-    "devtools_opened":            (1,  EventSeverity.high,     "DevTools opened during exam"),
-    "browser_extension_detected": (1,  EventSeverity.high,     "Browser extension detected"),
-    "copy_paste_blocked":         (5,  EventSeverity.low,      "Copy/paste blocked {count}x"),
-    "context_menu_blocked":      (10,  EventSeverity.info,     "Context menu blocked {count}x"),
-    "extended_display_detected":  (1,  EventSeverity.medium,   "Extended display detected"),
+    "tab_switch": (3, EventSeverity.medium, "Tab switch threshold reached ({count}x)"),  # noqa: E501
+    "window_blur": (5, EventSeverity.low, "Window focus lost threshold reached ({count}x)"),  # noqa: E501
+    "fullscreen_exit": (2, EventSeverity.medium, "Fullscreen exited {count}x during exam"),  # noqa: E501
+    "clipboard_access": (3, EventSeverity.medium, "Clipboard access threshold reached ({count}x)"),  # noqa: E501
+    "keyboard_shortcut_blocked": (10, EventSeverity.low, "Keyboard shortcuts blocked {count}x"),  # noqa: E501
+    "screen_capture_attempt": (1, EventSeverity.critical, "Screen capture attempted"),
+    "devtools_opened": (1, EventSeverity.high, "DevTools opened during exam"),
+    "browser_extension_detected": (1, EventSeverity.high, "Browser extension detected"),
+    "copy_paste_blocked": (5, EventSeverity.low, "Copy/paste blocked {count}x"),
+    "context_menu_blocked": (10, EventSeverity.info, "Context menu blocked {count}x"),
+    "extended_display_detected": (1, EventSeverity.medium, "Extended display detected"),
     # fmt: on
 }
 
@@ -195,12 +195,15 @@ async def record_event(
     alert: ProctorAlert | None = None
     if event_type in ALERT_THRESHOLDS:
         threshold, alert_sev, msg_template = ALERT_THRESHOLDS[event_type]
-        count = await db.scalar(
-            select(func.count(ProctorEvent.id)).where(
-                ProctorEvent.session_id == session_id,
-                ProctorEvent.event_type == event_type,
+        count = (
+            await db.scalar(
+                select(func.count(ProctorEvent.id)).where(
+                    ProctorEvent.session_id == session_id,
+                    ProctorEvent.event_type == event_type,
+                )
             )
-        ) or 1
+            or 1
+        )
         if count >= threshold and (count == threshold or count % threshold == 0):
             alert = await create_alert(
                 db,

@@ -1,4 +1,5 @@
 """Tests for E3-5 — reconnect + offline sync API."""
+
 from __future__ import annotations
 
 import uuid

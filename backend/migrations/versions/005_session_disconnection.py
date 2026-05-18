@@ -22,7 +22,9 @@ def upgrade() -> None:
     # Use a separate AUTOCOMMIT connection so alembic's transaction is not disrupted.
     bind = op.get_bind()
     conn = bind.execution_options(isolation_level="AUTOCOMMIT")
-    conn.execute(sa.text("ALTER TYPE exam_svc.sessionstatus ADD VALUE IF NOT EXISTS 'disconnected'"))
+    conn.execute(
+        sa.text("ALTER TYPE exam_svc.sessionstatus ADD VALUE IF NOT EXISTS 'disconnected'")
+    )
 
     # New column on exam_sessions
     op.add_column(

@@ -6,6 +6,7 @@ import type {
   ExamQuestion,
   ExamScenario,
   ExamSource,
+  ExamTest,
   GenerationStatusResponse,
   ProctoringSession,
   ScenarioBrief,
@@ -82,6 +83,9 @@ export const getExamBank = (bankId: string) =>
   apiFetch<ExamBank>(`/exam/banks/${bankId}`);
 
 export const listExamBanks = () => apiFetch<ExamBank[]>("/exam/banks");
+
+export const listBankTests = (bankId: string) =>
+  apiFetch<ExamTest[]>(`/exam/banks/${bankId}/tests`);
 
 // ---------------------------------------------------------------------------
 // ExamSource
