@@ -475,9 +475,7 @@ async def _check_heartbeat_async() -> dict:  # type: ignore[type-arg]
                 if open_gap and session.disconnected_at:
                     open_gap.reconnected_at = now
                     open_gap.auto_expired = True
-                    open_gap.duration_seconds = int(
-                        (now - session.disconnected_at).total_seconds()
-                    )
+                    open_gap.duration_seconds = int((now - session.disconnected_at).total_seconds())
 
                 event = ProctorEvent(
                     id=_uuid_module.uuid4(),
@@ -564,37 +562,50 @@ async def _check_edge_anomalies_async() -> dict:  # type: ignore[type-arg]
     async with celery_db() as db:
         # Find active sessions with enough edge data to evaluate
         active_sessions = (
-            await db.execute(
-                sa_select(ExamSession).where(ExamSession.status == SessionStatus.active)
+            (
+                await db.execute(
+                    sa_select(ExamSession).where(ExamSession.status == SessionStatus.active)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
         flagged_count = 0
         for session in active_sessions:
             # Count edge-classified frames
-            edge_total = await db.scalar(
-                sa_select(sa_func.count(ProctorSnapshot.id)).where(
-                    ProctorSnapshot.session_id == session.id,
-                    ProctorSnapshot.edge_verdict.is_not(None),
+            edge_total = (
+                await db.scalar(
+                    sa_select(sa_func.count(ProctorSnapshot.id)).where(
+                        ProctorSnapshot.session_id == session.id,
+                        ProctorSnapshot.edge_verdict.is_not(None),
+                    )
                 )
-            ) or 0
+                or 0
+            )
             if edge_total < 20:
                 continue  # not enough data
 
-            edge_clean = await db.scalar(
-                sa_select(sa_func.count(ProctorSnapshot.id)).where(
-                    ProctorSnapshot.session_id == session.id,
-                    ProctorSnapshot.edge_verdict == "clean",
+            edge_clean = (
+                await db.scalar(
+                    sa_select(sa_func.count(ProctorSnapshot.id)).where(
+                        ProctorSnapshot.session_id == session.id,
+                        ProctorSnapshot.edge_verdict == "clean",
+                    )
                 )
-            ) or 0
+                or 0
+            )
 
-            server_flagged = await db.scalar(
-                sa_select(sa_func.count(ProctorSnapshot.id)).where(
-                    ProctorSnapshot.session_id == session.id,
-                    ProctorSnapshot.violation_detected == True,  # noqa: E712
-                    ProctorSnapshot.edge_verdict.is_not(None),
+            server_flagged = (
+                await db.scalar(
+                    sa_select(sa_func.count(ProctorSnapshot.id)).where(
+                        ProctorSnapshot.session_id == session.id,
+                        ProctorSnapshot.violation_detected == True,  # noqa: E712
+                        ProctorSnapshot.edge_verdict.is_not(None),
+                    )
                 )
-            ) or 0
+                or 0
+            )
 
             edge_clean_rate = edge_clean / edge_total if edge_total > 0 else 0
             server_violation_rate = server_flagged / edge_total if edge_total > 0 else 0

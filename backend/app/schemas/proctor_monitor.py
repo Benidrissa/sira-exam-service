@@ -24,6 +24,7 @@ class NetworkGapSchema(BaseModel):
     missed_heartbeat_count: int = 0
     auto_expired: bool = False
 
+
 # ---------------------------------------------------------------------------
 # Alert schemas
 # ---------------------------------------------------------------------------

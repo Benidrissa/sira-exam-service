@@ -1,4 +1,5 @@
 """Tests for E3-9 — Edge AI server foundations: SHA-256 integrity, backward compat."""
+
 from __future__ import annotations
 
 import uuid
@@ -57,6 +58,7 @@ async def test_sha256_mismatch_creates_integrity_failure_event_and_skips_claude(
 
 def test_snapshot_recorded_request_accepts_old_client_without_edge_fields() -> None:
     from app.schemas.proctor import SnapshotRecordedRequest
+
     snap_id = uuid.uuid4()
     storage_key = f"snapshots/{uuid.uuid4()}/{snap_id}.jpg"
     req = SnapshotRecordedRequest(snapshot_id=snap_id, storage_key=storage_key)
@@ -68,6 +70,7 @@ def test_snapshot_recorded_request_accepts_old_client_without_edge_fields() -> N
 
 def test_snapshot_recorded_request_accepts_new_edge_fields() -> None:
     from app.schemas.proctor import SnapshotRecordedRequest
+
     snap_id = uuid.uuid4()
     req = SnapshotRecordedRequest(
         snapshot_id=snap_id,

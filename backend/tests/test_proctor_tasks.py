@@ -103,9 +103,7 @@ async def test_heartbeat_requires_session_token_header() -> None:
     from app.main import app
 
     session_id = _uuid.uuid4()
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         resp = await client.post(
             f"/api/v1/proctor/sessions/{session_id}/heartbeat",
             headers={"Authorization": "Bearer fake-token"},
