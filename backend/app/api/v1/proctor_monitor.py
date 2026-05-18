@@ -255,36 +255,52 @@ async def get_evidence_report(
 
     # Fetch all related data
     gaps = (
-        await db.execute(
-            select(NetworkGap)
-            .where(NetworkGap.session_id == session_id)
-            .order_by(NetworkGap.disconnected_at)
+        (
+            await db.execute(
+                select(NetworkGap)
+                .where(NetworkGap.session_id == session_id)
+                .order_by(NetworkGap.disconnected_at)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
 
     snapshots = (
-        await db.execute(
-            select(ProctorSnapshot)
-            .where(ProctorSnapshot.session_id == session_id)
-            .order_by(ProctorSnapshot.taken_at)
+        (
+            await db.execute(
+                select(ProctorSnapshot)
+                .where(ProctorSnapshot.session_id == session_id)
+                .order_by(ProctorSnapshot.taken_at)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
 
     events = (
-        await db.execute(
-            select(ProctorEvent)
-            .where(ProctorEvent.session_id == session_id)
-            .order_by(ProctorEvent.occurred_at)
+        (
+            await db.execute(
+                select(ProctorEvent)
+                .where(ProctorEvent.session_id == session_id)
+                .order_by(ProctorEvent.occurred_at)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
 
     alerts = (
-        await db.execute(
-            select(ProctorAlert)
-            .where(ProctorAlert.session_id == session_id)
-            .order_by(ProctorAlert.created_at)
+        (
+            await db.execute(
+                select(ProctorAlert)
+                .where(ProctorAlert.session_id == session_id)
+                .order_by(ProctorAlert.created_at)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
 
     return {
         "session": {
@@ -499,9 +515,7 @@ async def get_edge_metrics(db: DB, user: TeacherUser) -> dict:
 
     # Edge classified as clean (denominator for FN rate)
     edge_clean_q = await db.scalar(
-        sa_select(sa_func.count(ProctorSnapshot.id)).where(
-            ProctorSnapshot.edge_verdict == "clean"
-        )
+        sa_select(sa_func.count(ProctorSnapshot.id)).where(ProctorSnapshot.edge_verdict == "clean")
     )
 
     total = total_q or 0

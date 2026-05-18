@@ -450,7 +450,9 @@ async def heartbeat_resume(
             detail="Invalid or expired session token.",
         )
     session = await proctor_session_service.resume_session_after_disconnect(
-        db, session_id=session_id, answer_drafts=body.answer_drafts,
+        db,
+        session_id=session_id,
+        answer_drafts=body.answer_drafts,
     )
     return HeartbeatResumeResponse(
         ok=True,

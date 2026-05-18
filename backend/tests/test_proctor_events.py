@@ -85,13 +85,16 @@ async def test_screen_capture_attempt_creates_immediate_alert() -> None:
     # count=1 — exactly at threshold
     mock_db.scalar = AsyncMock(return_value=1)
 
-    with patch(
-        "app.domain.services.proctor_session_service.create_alert",
-        new_callable=AsyncMock,
-        return_value=mock_alert,
-    ) as mock_create_alert, patch(
-        "app.domain.models.proctor.ProctorEvent",
-        return_value=mock_event,
+    with (
+        patch(
+            "app.domain.services.proctor_session_service.create_alert",
+            new_callable=AsyncMock,
+            return_value=mock_alert,
+        ) as mock_create_alert,
+        patch(
+            "app.domain.models.proctor.ProctorEvent",
+            return_value=mock_event,
+        ),
     ):
         event, alert = await record_event(
             mock_db,
@@ -121,9 +124,7 @@ async def test_events_endpoint_requires_session_token_header() -> None:
     from app.main import app
 
     session_id = _uuid.uuid4()
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as client:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         resp = await client.post(
             f"/api/v1/proctor/sessions/{session_id}/events",
             headers={"Authorization": "Bearer fake-token"},

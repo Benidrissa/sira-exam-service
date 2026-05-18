@@ -313,7 +313,31 @@ Endpoints: GET queue, GET session, GET snapshots (presigned URLs), POST acknowle
 
 ---
 
-## 5. Non-Functional Requirements
+## 5. Functional Requirements — Phase 3 (Edge AI + Lockdown Hardening)
+
+### FR-3.15: Pre-Exam Selfie + ID Identity Verification
+**GitHub Issue:** #119
+**Priority:** P0 for phase3-lockdown
+
+- FR-3.15.1: Before a remote exam session becomes `active`, the student must complete an identity-binding step: hold a government-issued photo ID adjacent to their face within the webcam frame and capture a JPEG.
+- FR-3.15.2: `POST /exam/sessions/{id}/identity-photo` — accepts `multipart/form-data` JPEG; stores to MinIO key `exam-evidence/{org_id}/{session_id}/identity_{timestamp}.jpg`; creates `IdentityVerificationRecord(status=pending)`.
+- FR-3.15.3: `validate_identity_photo_task` Celery task — downloads image → Claude Vision (`claude-sonnet-4-6`) with structured prompt → checks (a) human face visible, (b) ID document visible adjacent to face → sets `ai_status=verified|rejected`, `ai_confidence`, `ai_face_detected`, `ai_id_detected`, `ai_rejection_reason`.
+- FR-3.15.4: If `ai_status=rejected`: student sees reason ("Face not detected" / "ID document not visible" / "ID too far from face") and may retry (max 3 attempts). After 3 failures, session is flagged (`ProctorEvent(type=identity_verification_failed)`) for proctor review and exam is blocked.
+- FR-3.15.5: `ExamSession.identity_verified` boolean field (Alembic migration); exam start endpoint returns 403 until `identity_verified=True`.
+- FR-3.15.6: Frontend pre-check wizard inserts this as a new step between camera-preview and consent: positioning guide overlay, live webcam preview, "Capture" button, loading spinner during AI check, result badge (✅ Verified / ❌ Retry).
+
+**Acceptance Criteria:**
+- AC1: `POST /exam/sessions/{id}/identity-photo` returns 201 + `IdentityVerificationRecord` with `status=pending`
+- AC2: Within 15s, Celery task updates record to `verified` or `rejected` with `ai_rejection_reason`
+- AC3: Rejected result shown in UI with reason string and "Retry" button (up to 3 attempts)
+- AC4: Exam start blocked (403) until `session.identity_verified=True`
+- AC5: MinIO key follows pattern `exam-evidence/{org_id}/{session_id}/identity_{ts}.jpg`
+- AC6: After 3 consecutive rejections, `ProctorEvent(identity_verification_failed)` created and proctor dashboard shows alert
+- AC7: CI passes (ruff + mypy strict + pytest ≥30%)
+
+---
+
+## 6. Non-Functional Requirements
 
 ### 5.1 Performance
 - NFR-1: API p95 response time < 200ms for CRUD endpoints (excluding AI generation)
@@ -338,7 +362,7 @@ Endpoints: GET queue, GET session, GET snapshots (presigned URLs), POST acknowle
 
 ---
 
-## 6. System Constraints
+## 7. System Constraints
 
 - CON-1: Share PostgreSQL instance with Sira; use isolated schema `exam_svc`
 - CON-2: Share Redis instance; namespace all keys with `exam:`
@@ -348,7 +372,7 @@ Endpoints: GET queue, GET session, GET snapshots (presigned URLs), POST acknowle
 
 ---
 
-## 6. Acceptance Criteria Summary
+## 8. Acceptance Criteria Summary
 
 | FR | GitHub Issue | UAT Scenario | Phase |
 |----|-------------|--------------|-------|
@@ -376,3 +400,4 @@ Endpoints: GET queue, GET session, GET snapshots (presigned URLs), POST acknowle
 | FR-2.8 | #26 | US-10 | 2 |
 | FR-2.9 | #27 | US-11 | 2 |
 | FR-2.10 | #28 | US-9 (pre-check) | 2 |
+| FR-3.15 | #119 | US-13 | 3 |

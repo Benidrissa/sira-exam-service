@@ -18,10 +18,13 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Extend sessionstatus enum — must run outside a transaction
-    op.execute(sa.text("COMMIT"))
-    op.execute(sa.text("ALTER TYPE sessionstatus ADD VALUE IF NOT EXISTS 'disconnected'"))
-    op.execute(sa.text("BEGIN"))
+    # Extend sessionstatus enum — ALTER TYPE ADD VALUE must run outside a transaction.
+    # Use a separate AUTOCOMMIT connection so alembic's transaction is not disrupted.
+    bind = op.get_bind()
+    conn = bind.execution_options(isolation_level="AUTOCOMMIT")
+    conn.execute(
+        sa.text("ALTER TYPE exam_svc.sessionstatus ADD VALUE IF NOT EXISTS 'disconnected'")
+    )
 
     # New column on exam_sessions
     op.add_column(
