@@ -8,6 +8,7 @@ from celery.result import AsyncResult
 from fastapi import APIRouter, File, HTTPException, UploadFile, status
 
 from app.api.deps import DB, CurrentUser, TeacherUser
+from app.core.auth import AuthenticatedUser
 from app.domain.models.exam import BankStatus
 from app.domain.services import (
     exam_answer_service,
@@ -19,7 +20,14 @@ from app.domain.services import (
 )
 from app.infrastructure.storage import get_exam_storage
 from app.schemas.exam import (
+    AttemptFullReviewResponse,
+    AttemptReviewResponse,
+    AttemptSubmissionSummary,
+    BatchValidateRequest,
+    BatchValidateResponse,
     BulkValidationResponse,
+    ComplaintCreate,
+    ComplaintResolve,
     DissertationAnswerResponse,
     ExamAttemptResponse,
     ExamBankCreate,
@@ -40,7 +48,9 @@ from app.schemas.exam import (
     GenerationStatusResponse,
     HumanScoreUpdate,
     RegenerateRequest,
+    ScoreComplaintResponse,
     StartAttemptResponse,
+    StudentAttemptHistoryItem,
     SubmitAttemptRequest,
 )
 from app.tasks.celery_app import celery_app
@@ -667,3 +677,229 @@ async def apply_human_score(
         human_feedback=data.human_feedback,
     )
     return DissertationAnswerResponse.model_validate(answer)
+
+
+# ---------------------------------------------------------------------------
+# Phase 4 helpers
+# ---------------------------------------------------------------------------
+
+
+def _org(user: AuthenticatedUser) -> uuid.UUID:
+    return uuid.UUID(user.org_id) if user.org_id else uuid.UUID(int=0)
+
+
+def _uid(user: AuthenticatedUser) -> uuid.UUID:
+    return uuid.UUID(user.user_id)
+
+
+# ---------------------------------------------------------------------------
+# FR-4.7: Teacher submission list
+# ---------------------------------------------------------------------------
+
+
+@router.get("/tests/{test_id}/submissions", response_model=list[AttemptSubmissionSummary])
+async def list_test_submissions(
+    test_id: uuid.UUID,
+    db: DB,
+    user: TeacherUser,
+) -> list[AttemptSubmissionSummary]:
+    """List all submitted attempts for a test (FR-4.7)."""
+    from app.domain.services.exam_submission_service import (
+        list_test_submissions as svc,
+    )
+
+    rows = await svc(db, test_id=test_id, org_id=_org(user))
+    return [AttemptSubmissionSummary(**r) for r in rows]
+
+
+# ---------------------------------------------------------------------------
+# FR-4.8: Individual attempt full review (teacher)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/attempts/{attempt_id}/full-review", response_model=AttemptFullReviewResponse)
+async def get_attempt_full_review(
+    attempt_id: uuid.UUID,
+    db: DB,
+    user: TeacherUser,
+) -> AttemptFullReviewResponse:
+    """Full attempt + all Q+A pairs for teacher review (FR-4.8)."""
+    from app.domain.services.exam_submission_service import (
+        get_attempt_full_review as svc,
+    )
+
+    result = await svc(db, attempt_id=attempt_id, org_id=_org(user))
+    return AttemptFullReviewResponse(**result)
+
+
+# ---------------------------------------------------------------------------
+# FR-4.9: Validate attempt
+# ---------------------------------------------------------------------------
+
+
+@router.post("/attempts/{attempt_id}/validate")
+async def validate_attempt(
+    attempt_id: uuid.UUID,
+    db: DB,
+    user: TeacherUser,
+) -> dict:
+    """Mark attempt as teacher-validated (FR-4.9)."""
+    from app.domain.services.exam_submission_service import validate_attempt as svc
+
+    attempt = await svc(
+        db, attempt_id=attempt_id, org_id=_org(user), validated_by=_uid(user)
+    )
+    return {
+        "attempt_id": str(attempt.id),
+        "validation_status": attempt.validation_status,
+        "validated_at": attempt.validated_at,
+    }
+
+
+# ---------------------------------------------------------------------------
+# FR-4.10: Batch validate
+# ---------------------------------------------------------------------------
+
+
+@router.post("/tests/{test_id}/batch-validate", response_model=BatchValidateResponse)
+async def batch_validate(
+    test_id: uuid.UUID,
+    data: BatchValidateRequest,
+    db: DB,
+    user: TeacherUser,
+) -> BatchValidateResponse:
+    """Validate multiple attempts in one request (FR-4.10)."""
+    from app.domain.services.exam_submission_service import batch_validate as svc
+
+    result = await svc(
+        db,
+        test_id=test_id,
+        org_id=_org(user),
+        attempt_ids=data.attempt_ids,
+        override_score=data.override_score,
+        validated_by=_uid(user),
+    )
+    return BatchValidateResponse(**result)
+
+
+# ---------------------------------------------------------------------------
+# FR-4.12: Student attempt history
+# ---------------------------------------------------------------------------
+
+
+@router.get("/student/history", response_model=list[StudentAttemptHistoryItem])
+async def list_student_history(
+    db: DB,
+    user: CurrentUser,
+) -> list[StudentAttemptHistoryItem]:
+    """List all submitted attempts for the logged-in student (FR-4.12)."""
+    from app.domain.services.exam_submission_service import list_student_history as svc
+
+    rows = await svc(db, user_id=_uid(user), org_id=_org(user))
+    return [StudentAttemptHistoryItem(**r) for r in rows]
+
+
+# ---------------------------------------------------------------------------
+# FR-4.13: Student read-only attempt review
+# ---------------------------------------------------------------------------
+
+
+@router.get("/attempts/{attempt_id}/review", response_model=AttemptReviewResponse)
+async def get_attempt_review(
+    attempt_id: uuid.UUID,
+    db: DB,
+    user: CurrentUser,
+) -> AttemptReviewResponse:
+    """Student's own read-only attempt review with feedback gate (FR-4.13)."""
+    from app.domain.services.exam_submission_service import get_attempt_review as svc
+
+    result = await svc(db, attempt_id=attempt_id, user_id=_uid(user), org_id=_org(user))
+    return AttemptReviewResponse(**result)
+
+
+# ---------------------------------------------------------------------------
+# FR-4.15: File complaint + list attempt complaints (student)
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/attempts/{attempt_id}/complaints",
+    response_model=ScoreComplaintResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def file_complaint(
+    attempt_id: uuid.UUID,
+    data: ComplaintCreate,
+    db: DB,
+    user: CurrentUser,
+) -> ScoreComplaintResponse:
+    """File a score complaint for an attempt (FR-4.15)."""
+    from app.domain.services.score_complaint_service import file_complaint as svc
+
+    complaint = await svc(
+        db,
+        attempt_id=attempt_id,
+        user_id=_uid(user),
+        org_id=_org(user),
+        question_id=data.question_id,
+        reason=data.reason,
+    )
+    return ScoreComplaintResponse.model_validate(complaint)
+
+
+@router.get(
+    "/attempts/{attempt_id}/complaints",
+    response_model=list[ScoreComplaintResponse],
+)
+async def list_attempt_complaints(
+    attempt_id: uuid.UUID,
+    db: DB,
+    user: CurrentUser,
+) -> list[ScoreComplaintResponse]:
+    """List all complaints filed by the student for an attempt (FR-4.15)."""
+    from app.domain.services.score_complaint_service import list_attempt_complaints as svc
+
+    complaints = await svc(
+        db, attempt_id=attempt_id, user_id=_uid(user), org_id=_org(user)
+    )
+    return [ScoreComplaintResponse.model_validate(c) for c in complaints]
+
+
+# ---------------------------------------------------------------------------
+# FR-4.16: Teacher list + resolve complaints
+# ---------------------------------------------------------------------------
+
+
+@router.get("/tests/{test_id}/complaints", response_model=list[ScoreComplaintResponse])
+async def list_test_complaints(
+    test_id: uuid.UUID,
+    db: DB,
+    user: TeacherUser,
+) -> list[ScoreComplaintResponse]:
+    """List all complaints for a test (FR-4.16)."""
+    from app.domain.services.score_complaint_service import list_test_complaints as svc
+
+    complaints = await svc(db, test_id=test_id, org_id=_org(user))
+    return [ScoreComplaintResponse.model_validate(c) for c in complaints]
+
+
+@router.patch("/complaints/{complaint_id}", response_model=ScoreComplaintResponse)
+async def resolve_complaint(
+    complaint_id: uuid.UUID,
+    data: ComplaintResolve,
+    db: DB,
+    user: TeacherUser,
+) -> ScoreComplaintResponse:
+    """Resolve (approve or reject) a score complaint (FR-4.16)."""
+    from app.domain.services.score_complaint_service import resolve_complaint as svc
+
+    complaint = await svc(
+        db,
+        complaint_id=complaint_id,
+        org_id=_org(user),
+        resolved_by=_uid(user),
+        status=data.status,
+        review_note=data.review_note,
+        score_override=data.score_override,
+    )
+    return ScoreComplaintResponse.model_validate(complaint)
