@@ -239,3 +239,140 @@ export interface VLMConfigResponse {
   tier2_model: { name: string; url: string; sha256: string } | null;
   mandatory_sample_rate: number;
 }
+
+// ---------------------------------------------------------------------------
+// Phase 4 — Class management, scheduling, submissions, complaints
+// ---------------------------------------------------------------------------
+
+export type Quarter = "q1" | "q2" | "q3" | "q4";
+export type ComplaintStatus = "pending" | "approved" | "rejected";
+export type ValidationStatus = "pending" | "validated";
+
+export interface SchoolClass {
+  id: string;
+  org_id: string;
+  name: string;
+  academic_year: string;
+  created_by: string;
+  created_at: string;
+}
+
+export interface ClassMember {
+  id: string;
+  class_id: string;
+  user_id: string;
+  added_by: string;
+  added_at: string;
+}
+
+export interface SchoolClassDetail extends SchoolClass {
+  members: ClassMember[];
+}
+
+export interface TestAssignment {
+  id: string;
+  test_id: string;
+  class_id: string;
+  released_at: string;
+  closes_at: string;
+  quarter: Quarter;
+  assigned_by: string;
+  created_at: string;
+}
+
+export interface StudentTestSummary {
+  test_id: string;
+  test_title: string;
+  bank_subject: string | null;
+  released_at: string;
+  closes_at: string;
+  quarter: Quarter;
+  class_name: string;
+  academic_year: string;
+  has_attempted: boolean;
+  attempt_id: string | null;
+}
+
+export interface AttemptSubmissionSummary {
+  attempt_id: string;
+  user_id: string;
+  attempted_at: string;
+  time_taken_sec: number | null;
+  mcq_score: number | null;
+  total_score: number | null;
+  passed: boolean | null;
+  validation_status: ValidationStatus;
+  pending_count: number;
+  ai_scored_count: number;
+  human_reviewed_count: number;
+}
+
+export interface ReviewQuestionAnswer {
+  question_id: string;
+  question_type: QuestionType;
+  description: string;
+  options: MCQOption[] | null;
+  correct_answer_indices: number[] | null;
+  explanation: string | null;
+  model_answer: string | null;
+  mcq_answer_indices: number[] | null;
+  is_mcq_correct: boolean | null;
+  dissertation_answer_text: string | null;
+  ai_score: number | null;
+  ai_feedback: string | null;
+  human_score: number | null;
+  human_feedback: string | null;
+}
+
+export interface AttemptFullReviewResponse {
+  attempt_id: string;
+  test_id: string;
+  user_id: string;
+  attempted_at: string;
+  mcq_score: number | null;
+  total_score: number | null;
+  passed: boolean | null;
+  validation_status: ValidationStatus;
+  questions: ReviewQuestionAnswer[];
+}
+
+export interface AttemptReviewResponse {
+  attempt_id: string;
+  test_id: string;
+  attempted_at: string;
+  mcq_score: number | null;
+  total_score: number | null;
+  passed: boolean | null;
+  validation_status: ValidationStatus;
+  feedback_available: boolean;
+  questions: ReviewQuestionAnswer[];
+}
+
+export interface StudentAttemptHistoryItem {
+  attempt_id: string;
+  test_id: string;
+  test_title: string;
+  attempted_at: string;
+  total_score: number | null;
+  passed: boolean | null;
+  validation_status: ValidationStatus;
+}
+
+export interface BatchValidateResponse {
+  validated_count: number;
+  errors: { attempt_id: string; reason: string }[];
+}
+
+export interface ScoreComplaint {
+  id: string;
+  attempt_id: string;
+  question_id: string | null;
+  filed_by: string;
+  reason: string;
+  status: ComplaintStatus;
+  reviewed_by: string | null;
+  review_note: string | null;
+  score_override: number | null;
+  reviewed_at: string | null;
+  created_at: string;
+}

@@ -1,0 +1,77 @@
+"use client";
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { createSchoolClass, listSchoolClasses } from "@/lib/api";
+import type { SchoolClass } from "@/types/exam";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import Link from "next/link";
+import { useParams } from "next/navigation";
+
+export default function ClassesPage() {
+  const params = useParams();
+  const locale = params.locale as string;
+  const qc = useQueryClient();
+  const [name, setName] = useState("");
+  const [year, setYear] = useState("");
+  const [createError, setCreateError] = useState<string | null>(null);
+
+  const { data: classes, isLoading, error } = useQuery({
+    queryKey: ["school-classes"],
+    queryFn: () => listSchoolClasses(),
+  });
+
+  const createMutation = useMutation({
+    mutationFn: () => createSchoolClass({ name, academic_year: year }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["school-classes"] });
+      setName("");
+      setYear("");
+      setCreateError(null);
+    },
+    onError: (e) => setCreateError(String(e)),
+  });
+
+  if (isLoading) return <div className="p-8">Loading…</div>;
+  if (error) return <p className="p-8 text-destructive">{String(error)}</p>;
+
+  return (
+    <main className="max-w-4xl mx-auto p-8 space-y-6">
+      <h1 className="text-2xl font-bold">Class Rosters</h1>
+
+      {/* Create form */}
+      <Card>
+        <CardHeader><CardTitle>Create Class</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex gap-3">
+            <Input placeholder="Class name (e.g. L3 Info A)" value={name} onChange={e => setName(e.target.value)} />
+            <Input placeholder="Year (e.g. 2025-2026)" value={year} onChange={e => setYear(e.target.value)} />
+            <Button onClick={() => createMutation.mutate()} disabled={!name || !year || createMutation.isPending}>
+              {createMutation.isPending ? "Creating…" : "Create"}
+            </Button>
+          </div>
+          {createError && <p className="text-sm text-destructive">{createError}</p>}
+        </CardContent>
+      </Card>
+
+      {/* Class list */}
+      <div className="space-y-3">
+        {classes?.length === 0 && <p className="text-muted-foreground">No classes yet.</p>}
+        {classes?.map((c: SchoolClass) => (
+          <Card key={c.id}>
+            <CardContent className="flex items-center justify-between py-4">
+              <div>
+                <p className="font-semibold">{c.name}</p>
+                <p className="text-sm text-muted-foreground">{c.academic_year}</p>
+              </div>
+              <Link href={`/${locale}/classes/${c.id}`}>
+                <Button variant="outline" size="sm">Manage →</Button>
+              </Link>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    </main>
+  );
+}
