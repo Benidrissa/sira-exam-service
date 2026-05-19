@@ -49,9 +49,8 @@ export function NavBar() {
   });
 
   useEffect(() => {
-    // Re-read after hydration in case cookie changed
     setRole(getRoleFromCookie());
-  }, []);
+  }, [pathname]);
 
   // Don't render on login page
   if (pathname?.includes("/login")) return null;
