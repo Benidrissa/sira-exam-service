@@ -281,7 +281,7 @@ class ExamTest(Base):
     attempts: Mapped[list[ExamAttempt]] = relationship(
         "ExamAttempt", back_populates="test", cascade="all, delete-orphan"
     )
-    assignments: Mapped[list[TestAssignment]] = relationship(  # type: ignore[name-defined]  # noqa: F821
+    assignments: Mapped[list[TestAssignment]] = relationship(
         "TestAssignment", back_populates="test", cascade="all, delete-orphan"
     )
 
@@ -316,7 +316,7 @@ class ExamAttempt(Base):
     session: Mapped[ExamSession | None] = relationship(  # type: ignore[name-defined]  # noqa: F821
         "ExamSession", back_populates="attempt", uselist=False
     )
-    complaints: Mapped[list[ScoreComplaint]] = relationship(  # type: ignore[name-defined]  # noqa: F821
+    complaints: Mapped[list[ScoreComplaint]] = relationship(
         "ScoreComplaint", back_populates="attempt", cascade="all, delete-orphan"
     )
 
