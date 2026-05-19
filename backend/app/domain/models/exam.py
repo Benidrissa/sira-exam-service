@@ -309,6 +309,12 @@ class ExamAttempt(Base):
         DateTime(timezone=True), server_default=func.now()
     )
 
+    validation_status: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default="pending"
+    )
+    validated_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    validated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
     test: Mapped[ExamTest] = relationship("ExamTest", back_populates="attempts")
     dissertation_answers: Mapped[list[DissertationAnswer]] = relationship(
         "DissertationAnswer", back_populates="attempt", cascade="all, delete-orphan"

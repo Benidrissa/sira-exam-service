@@ -175,8 +175,32 @@ def upgrade() -> None:
         f"ON {_SCHEMA}.score_complaints(attempt_id) WHERE question_id IS NULL"
     )
 
+    # --- validation columns on exam_attempts -----------------------------------
+    op.add_column(
+        "exam_attempts",
+        sa.Column(
+            "validation_status",
+            sa.Text(),
+            nullable=False,
+            server_default="pending",
+        ),
+        schema=_SCHEMA,
+    )
+    op.add_column(
+        "exam_attempts",
+        sa.Column("validated_by", UUID(as_uuid=True), nullable=True),
+        schema=_SCHEMA,
+    )
+    op.add_column(
+        "exam_attempts",
+        sa.Column("validated_at", sa.DateTime(timezone=True), nullable=True),
+        schema=_SCHEMA,
+    )
+
 
 def downgrade() -> None:
+    for col in ("validated_at", "validated_by", "validation_status"):
+        op.drop_column("exam_attempts", col, schema=_SCHEMA)
     op.execute(f"DROP INDEX IF EXISTS {_SCHEMA}.uq_complaint_total")
     op.drop_table("score_complaints", schema=_SCHEMA)
     op.drop_table("test_assignments", schema=_SCHEMA)
