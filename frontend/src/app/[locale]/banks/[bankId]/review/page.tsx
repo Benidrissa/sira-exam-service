@@ -29,7 +29,7 @@ import {
 function createQuestion(
   bankId: string,
   data: {
-    scenario_id: string;
+    scenario_id: string | null;
     question_type: "mcq" | "dissertation";
     description: string;
     options?: Array<{ label: string; text: string }>;
@@ -69,6 +69,10 @@ export default function ReviewBoardPage() {
     [questions],
   );
 
+  const unassignedQuestions = questions
+    .filter((q) => q.scenario_id === null)
+    .sort((a, b) => a.order_index - b.order_index);
+
   async function handleValidateAll() {
     setPublishState("publishing");
     try {
@@ -88,7 +92,7 @@ export default function ReviewBoardPage() {
     }
   }
 
-  async function handleAddQuestion(scenarioId: string, type: "mcq" | "dissertation") {
+  async function handleAddQuestion(scenarioId: string | null, type: "mcq" | "dissertation") {
     try {
       const defaultOptions =
         type === "mcq"
@@ -184,10 +188,26 @@ export default function ReviewBoardPage() {
         />
       ))}
 
-      {scenarios.length === 0 && (
+      {scenarios.length === 0 && unassignedQuestions.length === 0 && (
         <p className="text-sm text-muted-foreground text-center py-12">
           No scenarios generated yet.
         </p>
+      )}
+
+      {/* Questions without a scenario (null scenario_id) */}
+      {unassignedQuestions.length > 0 && (
+        <ScenarioCard
+          key="__uncategorized__"
+          bankId={bankId}
+          scenario={{ id: "", bank_id: bankId, title: "Uncategorized", objective: null, context_text: null, context_image_storage_key: null, order_index: 9999, created_at: "", updated_at: "" }}
+          questions={unassignedQuestions}
+          onQuestionUpdate={(updated) =>
+            setQuestions((prev) => prev.map((q) => q.id === updated.id ? updated : q))
+          }
+          onQuestionAdd={(type) => handleAddQuestion(null, type)}
+          onSaveError={setSaveError}
+          readonlyTitle
+        />
       )}
     </div>
   );
@@ -195,7 +215,7 @@ export default function ReviewBoardPage() {
 
 // ─── Scenario card ───────────────────────────────────────────────────────────
 function ScenarioCard({
-  bankId, scenario, questions, onQuestionUpdate, onQuestionAdd, onSaveError,
+  bankId, scenario, questions, onQuestionUpdate, onQuestionAdd, onSaveError, readonlyTitle,
 }: {
   bankId: string;
   scenario: ExamScenario;
@@ -203,12 +223,14 @@ function ScenarioCard({
   onQuestionUpdate: (q: ExamQuestion) => void;
   onQuestionAdd: (type: "mcq" | "dissertation") => void;
   onSaveError: (msg: string) => void;
+  readonlyTitle?: boolean;
 }) {
   const [title, setTitle] = useState(scenario.title);
   const [saving, setSaving] = useState(false);
 
   const saveTitle = useDebounce(
     useCallback(async (val: string) => {
+      if (!scenario.id) return;
       setSaving(true);
       try { await patchScenario(bankId, scenario.id, { title: val }); }
       catch (e) { onSaveError(`Scenario save failed: ${e instanceof Error ? e.message : String(e)}`); }
@@ -221,11 +243,15 @@ function ScenarioCard({
     <Card className="mb-4">
       <CardHeader className="pb-3">
         <div className="flex items-center gap-3">
-          <Input
-            className="flex-1 border-transparent bg-transparent font-bold text-base hover:border-input focus:border-input px-2"
-            value={title}
-            onChange={(e) => { setTitle(e.target.value); saveTitle(e.target.value); }}
-          />
+          {readonlyTitle ? (
+            <span className="flex-1 font-bold text-base px-2 text-muted-foreground italic">{title}</span>
+          ) : (
+            <Input
+              className="flex-1 border-transparent bg-transparent font-bold text-base hover:border-input focus:border-input px-2"
+              value={title}
+              onChange={(e) => { setTitle(e.target.value); saveTitle(e.target.value); }}
+            />
+          )}
           {saving && <span className="text-xs text-muted-foreground shrink-0">Saving…</span>}
         </div>
       </CardHeader>
