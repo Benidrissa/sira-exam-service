@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1.exam import router as exam_router
 from app.api.v1.proctor import router as proctor_router
 from app.api.v1.proctor_monitor import router as proctor_monitor_router
+from app.api.v1.school_class import router as school_class_router
 from app.api.v1.ws import router as ws_router
 from app.core.config import settings
 from app.core.database import create_schema
@@ -58,6 +59,7 @@ app.include_router(exam_router, prefix="/api/v1")
 app.include_router(proctor_router, prefix="/api/v1")
 app.include_router(ws_router)
 app.include_router(proctor_monitor_router, prefix="/api/v1")
+app.include_router(school_class_router, prefix="/api/v1")
 
 if settings.debug:
     from app.api.v1.dev import router as dev_router

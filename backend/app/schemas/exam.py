@@ -13,6 +13,7 @@ from app.domain.models.exam import (
     Difficulty,
     DissertationStatus,
     ExtractionStatus,
+    Quarter,
     QuestionType,
     TestMode,
     TestStatus,
@@ -466,3 +467,92 @@ class ScoreComplaintResponse(BaseModel):
     score_override: float | None
     reviewed_at: datetime | None
     created_at: datetime
+
+
+# ---------------------------------------------------------------------------
+# Phase 4 — Class Management + Scheduling
+# ---------------------------------------------------------------------------
+
+
+class SchoolClassCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=200)
+    academic_year: str = Field(..., pattern=r"^\d{4}-\d{4}$")
+
+
+class SchoolClassUpdate(BaseModel):
+    name: str | None = Field(None, min_length=1, max_length=200)
+    academic_year: str | None = Field(None, pattern=r"^\d{4}-\d{4}$")
+
+
+class SchoolClassResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    org_id: uuid.UUID
+    name: str
+    academic_year: str
+    created_by: uuid.UUID
+    created_at: datetime
+
+
+class ClassMemberCreate(BaseModel):
+    user_id: uuid.UUID
+
+
+class ClassMemberResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    class_id: uuid.UUID
+    user_id: uuid.UUID
+    added_by: uuid.UUID
+    added_at: datetime
+
+
+class SchoolClassDetailResponse(SchoolClassResponse):
+    members: list[ClassMemberResponse] = []
+
+
+class TestAssignmentCreate(BaseModel):
+    class_id: uuid.UUID
+    released_at: datetime
+    closes_at: datetime
+    quarter: Quarter
+
+    @model_validator(mode="after")
+    def validate_window(self) -> "TestAssignmentCreate":
+        if self.closes_at <= self.released_at:
+            raise ValueError("closes_at must be after released_at")
+        return self
+
+
+class TestAssignmentUpdate(BaseModel):
+    released_at: datetime | None = None
+    closes_at: datetime | None = None
+    quarter: Quarter | None = None
+
+
+class TestAssignmentResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    test_id: uuid.UUID
+    class_id: uuid.UUID
+    released_at: datetime
+    closes_at: datetime
+    quarter: Quarter
+    assigned_by: uuid.UUID
+    created_at: datetime
+
+
+class StudentTestSummary(BaseModel):
+    test_id: uuid.UUID
+    test_title: str
+    bank_subject: str | None
+    released_at: datetime
+    closes_at: datetime
+    quarter: Quarter
+    class_name: str
+    academic_year: str
+    has_attempted: bool
+    attempt_id: uuid.UUID | None
