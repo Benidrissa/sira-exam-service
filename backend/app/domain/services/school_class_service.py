@@ -6,7 +6,7 @@ import uuid
 from datetime import UTC, datetime as dt
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -118,9 +118,9 @@ async def delete_class(
     school_class = await get_class(db, class_id=class_id, org_id=org_id)
     # 409 if class has members
     member_count = await db.scalar(
-        select(ClassMember).where(ClassMember.class_id == class_id)
+        select(func.count()).select_from(ClassMember).where(ClassMember.class_id == class_id)
     )
-    if member_count is not None:
+    if member_count:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Cannot delete a class that has enrolled members",
@@ -344,10 +344,10 @@ async def delete_assignment(
         )
 
     # 409 if any ExamAttempt exists for the test
-    attempt_exists = await db.scalar(
-        select(ExamAttempt).where(ExamAttempt.test_id == assignment.test_id)
+    attempt_count = await db.scalar(
+        select(func.count()).select_from(ExamAttempt).where(ExamAttempt.test_id == assignment.test_id)
     )
-    if attempt_exists is not None:
+    if attempt_count:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Cannot delete assignment: students have already attempted this test",
