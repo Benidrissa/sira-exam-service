@@ -1,5 +1,7 @@
 from app.core.database import Base
 from app.domain.models.exam import (  # noqa: F401
+    ClassMember,
+    ComplaintStatus,
     DissertationAnswer,
     ExamAttempt,
     ExamBank,
@@ -7,6 +9,10 @@ from app.domain.models.exam import (  # noqa: F401
     ExamScenario,
     ExamSource,
     ExamTest,
+    Quarter,
+    SchoolClass,
+    ScoreComplaint,
+    TestAssignment,
 )
 from app.domain.models.proctor import (  # noqa: F401
     ExamSession,
