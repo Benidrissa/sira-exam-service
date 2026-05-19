@@ -45,14 +45,18 @@
 | File | Responsibility |
 |------|---------------|
 | `app/main.py` | FastAPI app factory, CORS, lifespan |
-| `app/api/v1/exam.py` | All REST endpoints |
+| `app/api/v1/exam.py` | Exam, attempt, submission, review, and complaint endpoints |
+| `app/api/v1/school_class.py` | SchoolClass CRUD + ClassMember enrollment + TestAssignment scheduling (Phase 4) |
 | `app/api/deps.py` | Dependency injection (DB session, current user from JWT) |
 | `app/core/auth.py` | JWT validation against `SIRA_JWT_SECRET` |
 | `app/core/config.py` | Settings via pydantic-settings |
 | `app/core/database.py` | SQLAlchemy async engine + session factory |
 | `app/core/redis.py` | Redis client (aioredis) |
-| `app/domain/models/exam.py` | SQLAlchemy ORM models |
+| `app/domain/models/exam.py` | SQLAlchemy ORM models (Phase 1 + Phase 4 additions) |
 | `app/domain/services/` | Business logic services |
+| `app/domain/services/school_class_service.py` | SchoolClass, ClassMember, TestAssignment CRUD (Phase 4) |
+| `app/domain/services/exam_submission_service.py` | Teacher submission list/review/validate + student history/review (Phase 4) |
+| `app/domain/services/score_complaint_service.py` | Score complaint filing + teacher resolution (Phase 4) |
 | `app/infrastructure/storage.py` | MinIO/S3 client (aiobotocore) |
 | `app/tasks/celery_app.py` | Celery config (Redis broker + backend) |
 | `app/tasks/extraction.py` | `extract_exam_source_task` |
@@ -116,6 +120,41 @@ DissertationAnswer
   ai_score, ai_feedback, criterion_scores: jsonb
   human_score, human_feedback
   status: pending | ai_scored | human_reviewed
+```
+
+### Phase 4 (extends Phase 1)
+
+```
+SchoolClass
+  id, org_id, created_by
+  name: str, academic_year: str
+  UniqueConstraint(org_id, name, academic_year)
+
+ClassMember
+  id, class_id → SchoolClass, user_id (JWT identity), added_by
+  UniqueConstraint(class_id, user_id)
+
+TestAssignment
+  id, test_id → ExamTest, class_id → SchoolClass
+  released_at: datetime, closes_at: datetime
+  quarter: q1 | q2 | q3 | q4
+  assigned_by
+  CheckConstraint(closes_at > released_at)
+  UniqueConstraint(test_id, class_id)
+
+ExamAttempt (extended)
+  + validation_status: pending | validated
+  + validated_by: UUID | null
+  + validated_at: datetime | null
+
+ScoreComplaint
+  id, attempt_id → ExamAttempt, question_id → ExamQuestion (nullable)
+  filed_by, reason: str (min 20 chars)
+  status: pending | approved | rejected
+  reviewed_by, review_note, score_override: float | null
+  reviewed_at: datetime | null
+  UniqueConstraint(attempt_id, question_id) [question-level]
+  PartialUniqueIndex(attempt_id) WHERE question_id IS NULL [total-score]
 ```
 
 ### Phase 2 (extends Phase 1)
@@ -183,6 +222,49 @@ GET    /api/v1/exam/tests/{id}/dissertation-review
 PATCH  /api/v1/exam/answers/{id}/human-score
 ```
 
+### Phase 4 Additional Endpoints
+```
+# Class management
+POST   /api/v1/exam/classes
+GET    /api/v1/exam/classes
+GET    /api/v1/exam/classes/{id}
+PATCH  /api/v1/exam/classes/{id}
+DELETE /api/v1/exam/classes/{id}
+POST   /api/v1/exam/classes/{id}/members
+GET    /api/v1/exam/classes/{id}/members
+DELETE /api/v1/exam/classes/{id}/members/{userId}
+
+# Test scheduling
+POST   /api/v1/exam/tests/{id}/assignments
+GET    /api/v1/exam/tests/{id}/assignments
+PATCH  /api/v1/exam/tests/{id}/assignments/{assignmentId}
+DELETE /api/v1/exam/tests/{id}/assignments/{assignmentId}
+
+# Bank → tests navigation (enhanced)
+GET    /api/v1/exam/banks/{id}/tests
+
+# Student test discovery
+GET    /api/v1/exam/student/tests
+GET    /api/v1/exam/student/history
+
+# Teacher submission management
+GET    /api/v1/exam/tests/{id}/submissions
+GET    /api/v1/exam/attempts/{id}/full-review
+POST   /api/v1/exam/attempts/{id}/validate
+POST   /api/v1/exam/tests/{id}/batch-validate
+
+# Student read-only review
+GET    /api/v1/exam/attempts/{id}/review
+
+# Score complaints (student)
+POST   /api/v1/exam/attempts/{id}/complaints
+GET    /api/v1/exam/attempts/{id}/complaints
+
+# Score complaints (teacher)
+GET    /api/v1/exam/tests/{id}/complaints
+PATCH  /api/v1/exam/complaints/{id}
+```
+
 ### Phase 2 Additional Endpoints
 ```
 POST   /api/v1/exam/sessions
@@ -215,6 +297,19 @@ POST /generate
         ├─ Call claude-sonnet-4-6 (forced tool use)
         ├─ Parse tool result → create ExamScenario + ExamQuestion rows
         └─ bank.status = "review"
+```
+
+### Attempt Start — Phase 4 Gate (FR-4.5)
+```
+POST /tests/{id}/start
+  │
+  ├─ Guard: test.status == published
+  ├─ Guard (if test.assignments non-empty):
+  │     ├─ Find assignment where released_at ≤ now ≤ closes_at
+  │     │     └─ None found → 403 "Test window not open"
+  │     └─ Check ClassMember(class_id=assignment.class_id, user_id=student)
+  │           └─ Not found → 403 "Not enrolled in any class for this test"
+  └─ Create ExamAttempt (unchanged from Phase 1)
 ```
 
 ### Dissertation Correction
