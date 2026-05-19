@@ -520,11 +520,13 @@ async def validate_all_questions(
 
 @router.get("/banks/{bank_id}/tests", response_model=list[ExamTestResponse])
 async def list_exam_tests(bank_id: uuid.UUID, user: TeacherUser, db: DB) -> list:
-    """List all tests for an exam bank."""
+    """List all tests for an exam bank (org-scoped)."""
     from sqlalchemy import select
 
     from app.domain.models.exam import ExamTest
 
+    # Guard: verify bank belongs to the calling user's org (raises 404 if not)
+    await exam_bank_service.get_bank(db, bank_id=bank_id, org_id=_org(user))
     result = await db.execute(select(ExamTest).where(ExamTest.bank_id == bank_id))
     return result.scalars().all()
 
@@ -667,3 +669,26 @@ async def apply_human_score(
         human_feedback=data.human_feedback,
     )
     return DissertationAnswerResponse.model_validate(answer)
+
+
+# ---------------------------------------------------------------------------
+# Phase 4 (FR-4.6): Student — discover available tests
+# ---------------------------------------------------------------------------
+
+
+@router.get("/student/tests")
+async def list_student_available_tests(
+    db: DB,
+    user: CurrentUser,
+) -> list:
+    """Return open-window tests that the current student is enrolled in (FR-4.6)."""
+    from app.domain.services import school_class_service
+    from app.schemas.exam import StudentTestSummary
+
+    org_id = uuid.UUID(user.org_id) if user.org_id else uuid.UUID(int=0)
+    rows = await school_class_service.get_student_available_tests(
+        db,
+        user_id=uuid.UUID(user.user_id),
+        org_id=org_id,
+    )
+    return [StudentTestSummary(**row) for row in rows]
