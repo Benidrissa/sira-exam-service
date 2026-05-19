@@ -9,9 +9,20 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 
+function getRoleFromCookie(): string | null {
+  if (typeof document === "undefined") return null;
+  const match = document.cookie.match(/(?:^|; )access_token=([^;]*)/);
+  if (!match) return null;
+  try {
+    const payload = JSON.parse(atob(decodeURIComponent(match[1]).split(".")[1]));
+    return payload.role ?? null;
+  } catch { return null; }
+}
+
 export default function ClassesPage() {
   const params = useParams();
   const locale = params.locale as string;
+  const isTeacher = ["expert", "admin", "sub_admin"].includes(getRoleFromCookie() ?? "");
   const qc = useQueryClient();
   const [name, setName] = useState("");
   const [year, setYear] = useState("");
@@ -40,20 +51,22 @@ export default function ClassesPage() {
     <main className="max-w-4xl mx-auto p-8 space-y-6">
       <h1 className="text-2xl font-bold">Class Rosters</h1>
 
-      {/* Create form */}
-      <Card>
-        <CardHeader><CardTitle>Create Class</CardTitle></CardHeader>
-        <CardContent className="space-y-3">
-          <div className="flex gap-3">
-            <Input placeholder="Class name (e.g. L3 Info A)" value={name} onChange={e => setName(e.target.value)} />
-            <Input placeholder="Year (e.g. 2025-2026)" value={year} onChange={e => setYear(e.target.value)} />
-            <Button onClick={() => createMutation.mutate()} disabled={!name || !year || createMutation.isPending}>
-              {createMutation.isPending ? "Creating…" : "Create"}
-            </Button>
-          </div>
-          {createError && <p className="text-sm text-destructive">{createError}</p>}
-        </CardContent>
-      </Card>
+      {/* Create form — teacher only */}
+      {isTeacher && (
+        <Card>
+          <CardHeader><CardTitle>Create Class</CardTitle></CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex gap-3">
+              <Input placeholder="Class name (e.g. L3 Info A)" value={name} onChange={e => setName(e.target.value)} />
+              <Input placeholder="Year (e.g. 2025-2026)" value={year} onChange={e => setYear(e.target.value)} />
+              <Button onClick={() => createMutation.mutate()} disabled={!name || !year || createMutation.isPending}>
+                {createMutation.isPending ? "Creating…" : "Create"}
+              </Button>
+            </div>
+            {createError && <p className="text-sm text-destructive">{createError}</p>}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Class list */}
       <div className="space-y-3">
@@ -75,3 +88,4 @@ export default function ClassesPage() {
     </main>
   );
 }
+
