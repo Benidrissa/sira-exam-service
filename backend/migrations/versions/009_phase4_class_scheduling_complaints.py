@@ -80,6 +80,8 @@ def upgrade() -> None:
     op.create_index("ix_class_members_user_id", "class_members", ["user_id"], schema=_SCHEMA)
 
     # --- test_assignments -----------------------------------------------------
+    # Use Text() for enum columns to avoid SQLAlchemy CREATE TYPE in op.create_table,
+    # then ALTER to the proper enum types after table creation.
     op.create_table(
         "test_assignments",
         sa.Column("id", UUID(as_uuid=True), primary_key=True),
@@ -97,11 +99,7 @@ def upgrade() -> None:
         ),
         sa.Column("released_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("closes_at", sa.DateTime(timezone=True), nullable=False),
-        sa.Column(
-            "quarter",
-            sa.Enum("q1", "q2", "q3", "q4", name="quarter", create_type=False, schema=_SCHEMA),
-            nullable=False,
-        ),
+        sa.Column("quarter", sa.Text(), nullable=False),  # cast to enum below
         sa.Column("assigned_by", UUID(as_uuid=True), nullable=False),
         sa.Column(
             "created_at",
@@ -112,6 +110,11 @@ def upgrade() -> None:
         sa.UniqueConstraint("test_id", "class_id", name="uq_assignment_test_class"),
         sa.CheckConstraint("closes_at > released_at", name="ck_assignment_window_valid"),
         schema=_SCHEMA,
+    )
+    op.execute(
+        f"ALTER TABLE {_SCHEMA}.test_assignments "
+        f"ALTER COLUMN quarter TYPE {_SCHEMA}.quarter "
+        f"USING quarter::{_SCHEMA}.quarter"
     )
     op.create_index("ix_test_assignments_test_id", "test_assignments", ["test_id"], schema=_SCHEMA)
     op.create_index(
@@ -136,19 +139,7 @@ def upgrade() -> None:
         ),
         sa.Column("filed_by", UUID(as_uuid=True), nullable=False),
         sa.Column("reason", sa.Text(), nullable=False),
-        sa.Column(
-            "status",
-            sa.Enum(
-                "pending",
-                "approved",
-                "rejected",
-                name="complaintstatus",
-                create_type=False,
-                schema=_SCHEMA,
-            ),
-            nullable=False,
-            server_default="pending",
-        ),
+        sa.Column("status", sa.Text(), nullable=False, server_default="pending"),  # cast to enum below
         sa.Column("reviewed_by", UUID(as_uuid=True), nullable=True),
         sa.Column("review_note", sa.Text(), nullable=True),
         sa.Column("score_override", sa.Float(), nullable=True),
@@ -162,6 +153,15 @@ def upgrade() -> None:
         # Covers question-level uniqueness (NULL != NULL in PG, so this only constrains non-null)
         sa.UniqueConstraint("attempt_id", "question_id", name="uq_complaint_per_question"),
         schema=_SCHEMA,
+    )
+    op.execute(
+        f"ALTER TABLE {_SCHEMA}.score_complaints "
+        f"ALTER COLUMN status TYPE {_SCHEMA}.complaintstatus "
+        f"USING status::{_SCHEMA}.complaintstatus"
+    )
+    op.execute(
+        f"ALTER TABLE {_SCHEMA}.score_complaints "
+        f"ALTER COLUMN status SET DEFAULT 'pending'::{_SCHEMA}.complaintstatus"
     )
     op.create_index(
         "ix_score_complaints_attempt_id", "score_complaints", ["attempt_id"], schema=_SCHEMA
