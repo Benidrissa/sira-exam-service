@@ -397,3 +397,194 @@
 
 ### Linked FRs: FR-3.15
 ### Linked GitHub Issue: #119
+
+---
+
+## Phase 4 — Class Scheduling, Score Validation & Complaints
+
+---
+
+## US-14: TestBank Reusability
+
+**As a** Teacher
+**I want to** create multiple exam tests from a single published bank and see which tests are derived from it
+**So that** I can reuse course material across different semesters or exam configurations without duplication
+
+### Preconditions
+- Authenticated teacher JWT
+- At least one bank in `status=published` with validated questions
+
+### Steps
+1. `POST /api/v1/exam/banks/{id}/tests` with `{title: "Midterm Q1"}` → 201
+2. `POST /api/v1/exam/banks/{id}/tests` with `{title: "Final Q4"}` → 201
+3. `GET /api/v1/exam/banks/{id}/tests` → verify both tests listed under same bank
+4. `DELETE /api/v1/exam/banks/{id}` (soft-delete) → 204, bank `status=archived`
+5. `GET /api/v1/exam/banks/{id}/tests` → tests still listed (archive did not cascade-delete)
+6. Repeat step 3 with a different org's teacher token → expect 404
+
+### Acceptance Criteria
+- [ ] AC1: Two ExamTests with the same `bank_id` created successfully
+- [ ] AC2: `GET /banks/{id}/tests` returns all tests scoped to the caller's org
+- [ ] AC3: Bank archive sets `status=archived`, does not delete tests with submitted attempts
+- [ ] AC4: Different-org teacher receives 404 on `GET /banks/{id}/tests`
+
+### Linked FRs: FR-4.1
+
+---
+
+## US-15: Class + Year Scoped Test Access
+
+**As a** Student
+**I want to** only be able to start tests for the class I am enrolled in
+**So that** exam access is automatically restricted to the correct cohort and academic year
+
+### Preconditions
+- Teacher has created a `SchoolClass` (name="Math", academic_year="2025-2026") for the org
+- Student A is enrolled in that class; Student B is not
+- An `ExamTest` has a `TestAssignment` linking it to the Math class
+
+### Steps
+1. Teacher: `POST /api/v1/exam/classes` → 201 SchoolClass
+2. Teacher: `POST /api/v1/exam/classes/{id}/members` with Student A's `user_id` → 201
+3. Teacher: `POST /api/v1/exam/tests/{testId}/assignments` with `class_id`, `released_at=past`, `closes_at=future`, `quarter=q1` → 201
+4. Student A: `POST /api/v1/exam/tests/{testId}/start` → 201 (attempt created)
+5. Student B: same call → 403 "Not enrolled in any class for this test"
+6. Teacher: `GET /api/v1/exam/classes/{id}/members` → confirm only Student A listed
+7. Teacher: `DELETE /api/v1/exam/classes/{id}/members/{studentAUserId}` → 204
+8. Student A: `POST /api/v1/exam/tests/{testId}/start` (new attempt) → 403
+
+### Acceptance Criteria
+- [ ] AC1: SchoolClass CRUD requires teacher role (403 for students)
+- [ ] AC2: Enrolled student within valid window → 201 on attempt start
+- [ ] AC3: Unenrolled student → 403
+- [ ] AC4: After removing enrollment, previously-enrolled student blocked → 403
+- [ ] AC5: Test with no assignments → 201 for any authenticated student (backward compat)
+
+### Linked FRs: FR-4.2, FR-4.3, FR-4.5
+
+---
+
+## US-16: Test Scheduling (Window + Quarter)
+
+**As a** Teacher
+**I want to** set a release window and quarter label when assigning a test to a class
+**So that** students can only access the exam during the scheduled period and the quarter is clearly identified
+
+### Preconditions
+- SchoolClass and ClassMember exist (from US-15)
+- Published ExamTest exists
+
+### Steps
+1. Teacher: `POST /api/v1/exam/tests/{testId}/assignments` with `released_at=2h_future, closes_at=3h_future, quarter=q2` → 201
+2. Student: `POST /api/v1/exam/tests/{testId}/start` → 403 "Test window not open"
+3. Teacher: `PATCH /api/v1/exam/tests/{testId}/assignments/{id}` with `released_at=past` → 200
+4. Student: `POST /api/v1/exam/tests/{testId}/start` → 201
+5. Teacher: `PATCH /api/v1/exam/tests/{testId}/assignments/{id}` with `closes_at=past` → 200
+6. New student (enrolled): `POST /api/v1/exam/tests/{testId}/start` → 403 "Test window not open"
+7. Student: `GET /api/v1/exam/student/tests` → the open-window test appears; closed one does not
+
+### Acceptance Criteria
+- [ ] AC1: `released_at` in future → student blocked until window opens
+- [ ] AC2: `closes_at` in past → student blocked even if enrolled
+- [ ] AC3: `closes_at ≤ released_at` on POST/PATCH → 422
+- [ ] AC4: `quarter` stored and returned correctly (q1–q4 or null)
+- [ ] AC5: `GET /student/tests` returns only tests within open windows for the student's classes
+
+### Linked FRs: FR-4.4, FR-4.5, FR-4.6
+
+---
+
+## US-17: Teacher Score Validation (Batch + Individual)
+
+**As a** Teacher
+**I want to** see all student submissions for a test, review individual answers, and validate scores in bulk
+**So that** I can efficiently finalize grades and switch freely between individual and batch review modes
+
+### Preconditions
+- At least 3 students have submitted the test
+- All dissertation answers are in `status=ai_scored`
+- Teacher JWT with access to the test's org
+
+### Steps
+1. `GET /api/v1/exam/tests/{testId}/submissions` → list all attempts with per-status dissertation counts
+2. `GET /api/v1/exam/attempts/{attemptId}/full-review` → see one student's answers side-by-side
+3. `PATCH /api/v1/exam/answers/{answerId}/human-score` with `{human_score, human_feedback}` → answer goes to `status=human_reviewed`
+4. `POST /api/v1/exam/attempts/{attemptId}/validate` → 200 (all dissertations now human_reviewed)
+5. `POST /api/v1/exam/tests/{testId}/batch-validate` with `{attempt_ids: [A, B, C]}` and no `override_score` → validates A, B, C using current scores
+6. `POST /api/v1/exam/tests/{testId}/batch-validate` with `{attempt_ids: [D], override_score: 75.0}` → D gets total_score=75.0, passed recomputed
+7. Student calls `POST /tests/{testId}/batch-validate` → 403
+
+### Acceptance Criteria
+- [ ] AC1: `GET /tests/{testId}/submissions` returns all attempts with counts
+- [ ] AC2: `GET /attempts/{id}/full-review` returns all Q+A pairs (teacher always sees correct answers)
+- [ ] AC3: Validate attempt with unreviewed dissertations → 422 with list of pending answer IDs
+- [ ] AC4: Batch validate 3 attempts → `validated_count=3`
+- [ ] AC5: Batch with `override_score=75.0` updates `total_score` and recomputes `passed`
+- [ ] AC6: Student cannot call batch-validate → 403
+- [ ] AC7: Max 100 attempt_ids per batch → 422 if exceeded
+
+### Linked FRs: FR-4.7, FR-4.8, FR-4.9, FR-4.10, FR-4.11
+
+---
+
+## US-18: Student Read-Only Review
+
+**As a** Student
+**I want to** see a history of all my past exams and review my submitted answers after the test closes
+**So that** I can learn from my mistakes and verify my recorded score
+
+### Preconditions
+- Student has at least two submitted attempts
+- Test A: `closes_at` in the past (window closed)
+- Test B: `show_feedback=True` (immediate feedback enabled)
+- Test C: open window, `show_feedback=False` (review locked)
+
+### Steps
+1. `GET /api/v1/exam/student/history` → all three attempts listed with scores
+2. `GET /api/v1/exam/attempts/{A_attemptId}/review` → correct answers visible (window closed)
+3. `GET /api/v1/exam/attempts/{B_attemptId}/review` → correct answers visible (`show_feedback=True`)
+4. `GET /api/v1/exam/attempts/{C_attemptId}/review` → `feedback_available=false`; correct answers null
+5. Different student: `GET /api/v1/exam/attempts/{A_attemptId}/review` → 403
+
+### Acceptance Criteria
+- [ ] AC1: `GET /student/history` returns all submitted attempts for the student
+- [ ] AC2: Closed test → `feedback_available=true`, correct answers visible
+- [ ] AC3: `show_feedback=True` → `feedback_available=true`, correct answers visible
+- [ ] AC4: Open test, `show_feedback=False` → `feedback_available=false`, correct_answer_indices null (not empty list)
+- [ ] AC5: Different student → 403
+- [ ] AC6: Student's own submitted answer text always visible regardless of gate
+
+### Linked FRs: FR-4.12, FR-4.13, FR-4.14
+
+---
+
+## US-19: Score Complaint
+
+**As a** Student
+**I want to** file a formal complaint when I disagree with a question score or total score
+**So that** the teacher can review and correct any grading errors
+
+### Preconditions
+- Student has a submitted and scored attempt with `validation_status=validated`
+- Teacher JWT with access to the test's org
+
+### Steps
+1. Student: `POST /api/v1/exam/attempts/{attemptId}/complaints` with `{question_id: Q1, reason: "My answer matches the rubric criterion X."}` → 201, `status=pending`
+2. Student: same POST again (duplicate) → 409
+3. Student: `POST /api/v1/exam/attempts/{attemptId}/complaints` with `{question_id: null, reason: "Total score does not add up correctly."}` → 201 (total-score complaint)
+4. Teacher: `GET /api/v1/exam/tests/{testId}/complaints` → both complaints listed
+5. Teacher: `PATCH /api/v1/exam/complaints/{complaint1Id}` with `{status: "rejected"}` (no `review_note`) → 422
+6. Teacher: `PATCH /api/v1/exam/complaints/{complaint1Id}` with `{status: "rejected", review_note: "Score matches rubric."}` → 200
+7. Teacher: `PATCH /api/v1/exam/complaints/{complaint2Id}` with `{status: "approved", review_note: "Corrected.", score_override: 85.0}` → 200; attempt total_score updated
+8. Different student: `POST /api/v1/exam/attempts/{attemptId}/complaints` → 403
+
+### Acceptance Criteria
+- [ ] AC1: Complaint created with `status=pending` → 201
+- [ ] AC2: Duplicate complaint → 409
+- [ ] AC3: Reject without `review_note` → 422
+- [ ] AC4: Reject with `review_note` → 200, `status=rejected`
+- [ ] AC5: Approve with `score_override` on total-score complaint → attempt's `total_score` updated, `passed` recomputed
+- [ ] AC6: Already-resolved complaint → 409 on second PATCH
+- [ ] AC7: Different student cannot file complaint on another's attempt → 403
+
+### Linked FRs: FR-4.15, FR-4.16, FR-4.17

@@ -5,10 +5,11 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.domain.models.exam import (
     BankStatus,
+    ComplaintStatus,
     Difficulty,
     DissertationStatus,
     ExtractionStatus,
@@ -346,4 +347,122 @@ class DissertationAnswerResponse(BaseModel):
     human_scored_by: uuid.UUID | None
     human_scored_at: datetime | None
     status: DissertationStatus
+    created_at: datetime
+
+
+# ---------------------------------------------------------------------------
+# Phase 4 — Submission management (FR-4.7–FR-4.13)
+# ---------------------------------------------------------------------------
+
+
+class AttemptSubmissionSummary(BaseModel):
+    attempt_id: uuid.UUID
+    user_id: uuid.UUID
+    attempted_at: datetime
+    time_taken_sec: int | None
+    mcq_score: float | None
+    total_score: float | None
+    passed: bool | None
+    validation_status: str
+    pending_count: int
+    ai_scored_count: int
+    human_reviewed_count: int
+
+
+class ReviewQuestionAnswer(BaseModel):
+    question_id: uuid.UUID
+    question_type: str
+    description: str
+    options: list | None
+    correct_answer_indices: list[int] | None  # None if review locked
+    explanation: str | None
+    model_answer: str | None  # None for students / when locked
+    mcq_answer_indices: list[int] | None
+    is_mcq_correct: bool | None
+    dissertation_answer_text: str | None
+    ai_score: float | None
+    ai_feedback: str | None
+    human_score: float | None
+    human_feedback: str | None
+
+
+class AttemptFullReviewResponse(BaseModel):
+    attempt_id: uuid.UUID
+    test_id: uuid.UUID
+    user_id: uuid.UUID
+    attempted_at: datetime
+    mcq_score: float | None
+    total_score: float | None
+    passed: bool | None
+    validation_status: str
+    questions: list[ReviewQuestionAnswer]
+
+
+class AttemptReviewResponse(BaseModel):
+    attempt_id: uuid.UUID
+    test_id: uuid.UUID
+    attempted_at: datetime
+    mcq_score: float | None
+    total_score: float | None
+    passed: bool | None
+    validation_status: str
+    feedback_available: bool
+    questions: list[ReviewQuestionAnswer]
+
+
+class StudentAttemptHistoryItem(BaseModel):
+    attempt_id: uuid.UUID
+    test_id: uuid.UUID
+    test_title: str
+    attempted_at: datetime
+    total_score: float | None
+    passed: bool | None
+    validation_status: str
+
+
+class BatchValidateRequest(BaseModel):
+    attempt_ids: list[uuid.UUID] = Field(..., min_length=1, max_length=100)
+    override_score: float | None = Field(None, ge=0.0, le=100.0)
+
+
+class BatchValidateResponse(BaseModel):
+    validated_count: int
+    errors: list[dict]
+
+
+# ---------------------------------------------------------------------------
+# Phase 4 — Score complaints (FR-4.15–FR-4.16)
+# ---------------------------------------------------------------------------
+
+
+class ComplaintCreate(BaseModel):
+    question_id: uuid.UUID | None = None
+    reason: str = Field(..., min_length=20, max_length=2000)
+
+
+class ComplaintResolve(BaseModel):
+    status: ComplaintStatus  # approved or rejected
+    review_note: str | None = Field(None, max_length=2000)
+    score_override: float | None = Field(None, ge=0.0)
+
+    @model_validator(mode="after")
+    def require_note_on_reject(self) -> ComplaintResolve:
+        if self.status == ComplaintStatus.rejected and not self.review_note:
+            raise ValueError("review_note is required when rejecting a complaint")
+        return self
+
+
+class ScoreComplaintResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    attempt_id: uuid.UUID
+    question_id: uuid.UUID | None
+    filed_by: uuid.UUID
+    reason: str
+    status: ComplaintStatus
+    reviewed_by: uuid.UUID | None
+    review_note: str | None
+    score_override: float | None
+    reviewed_at: datetime | None
     created_at: datetime

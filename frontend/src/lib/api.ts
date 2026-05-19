@@ -1,5 +1,10 @@
 import type {
+  AttemptFullReviewResponse,
+  AttemptReviewResponse,
+  AttemptSubmissionSummary,
+  BatchValidateResponse,
   BulkValidationResponse,
+  ClassMember,
   DissertationAnswer,
   ExamAttempt,
   ExamBank,
@@ -9,9 +14,16 @@ import type {
   ExamTest,
   GenerationStatusResponse,
   ProctoringSession,
+  Quarter,
   ScenarioBrief,
+  SchoolClass,
+  SchoolClassDetail,
+  ScoreComplaint,
   SessionDetail,
   SessionSummary,
+  StudentAttemptHistoryItem,
+  StudentTestSummary,
+  TestAssignment,
   VLMConfigResponse,
 } from "@/types/exam";
 
@@ -378,3 +390,89 @@ export async function getIdentityStatus(
 ): Promise<{ session_id: string; identity_verified: boolean; identity_status: string | null; identity_verified_at: string | null }> {
   return apiFetch(`/proctor/sessions/${sessionId}/identity/status`);
 }
+
+// ---------------------------------------------------------------------------
+// Phase 4 — SchoolClass & ClassMember
+// ---------------------------------------------------------------------------
+export const createSchoolClass = (data: { name: string; academic_year: string }) =>
+  apiFetch<SchoolClass>("/exam/classes", { method: "POST", body: JSON.stringify(data) });
+
+export const listSchoolClasses = (academic_year?: string) =>
+  apiFetch<SchoolClass[]>(`/exam/classes${academic_year ? `?academic_year=${academic_year}` : ""}`);
+
+export const getSchoolClass = (classId: string) =>
+  apiFetch<SchoolClassDetail>(`/exam/classes/${classId}`);
+
+export const updateSchoolClass = (classId: string, data: Partial<{ name: string; academic_year: string }>) =>
+  apiFetch<SchoolClass>(`/exam/classes/${classId}`, { method: "PATCH", body: JSON.stringify(data) });
+
+export const deleteSchoolClass = (classId: string) =>
+  apiFetch<void>(`/exam/classes/${classId}`, { method: "DELETE" });
+
+export const enrollStudent = (classId: string, userId: string) =>
+  apiFetch<ClassMember>(`/exam/classes/${classId}/members`, { method: "POST", body: JSON.stringify({ user_id: userId }) });
+
+export const listClassMembers = (classId: string) =>
+  apiFetch<ClassMember[]>(`/exam/classes/${classId}/members`);
+
+export const removeMember = (classId: string, userId: string) =>
+  apiFetch<void>(`/exam/classes/${classId}/members/${userId}`, { method: "DELETE" });
+
+// ---------------------------------------------------------------------------
+// Phase 4 — TestAssignment
+// ---------------------------------------------------------------------------
+export const createAssignment = (testId: string, data: { class_id: string; released_at: string; closes_at: string; quarter: Quarter }) =>
+  apiFetch<TestAssignment>(`/exam/tests/${testId}/assignments`, { method: "POST", body: JSON.stringify(data) });
+
+export const listAssignments = (testId: string) =>
+  apiFetch<TestAssignment[]>(`/exam/tests/${testId}/assignments`);
+
+export const deleteAssignment = (testId: string, assignmentId: string) =>
+  apiFetch<void>(`/exam/tests/${testId}/assignments/${assignmentId}`, { method: "DELETE" });
+
+// ---------------------------------------------------------------------------
+// Phase 4 — Student test discovery & history
+// ---------------------------------------------------------------------------
+export const listStudentTests = () =>
+  apiFetch<StudentTestSummary[]>("/exam/student/tests");
+
+export const listStudentHistory = () =>
+  apiFetch<StudentAttemptHistoryItem[]>("/exam/student/history");
+
+// ---------------------------------------------------------------------------
+// Phase 4 — Teacher submission management
+// ---------------------------------------------------------------------------
+export const listTestSubmissions = (testId: string) =>
+  apiFetch<AttemptSubmissionSummary[]>(`/exam/tests/${testId}/submissions`);
+
+export const getAttemptFullReview = (attemptId: string) =>
+  apiFetch<AttemptFullReviewResponse>(`/exam/attempts/${attemptId}/full-review`);
+
+export const validateAttempt = (attemptId: string) =>
+  apiFetch<{ attempt_id: string; validation_status: string; validated_at: string }>(
+    `/exam/attempts/${attemptId}/validate`, { method: "POST", body: JSON.stringify({}) }
+  );
+
+export const batchValidate = (testId: string, data: { attempt_ids: string[]; override_score?: number }) =>
+  apiFetch<BatchValidateResponse>(`/exam/tests/${testId}/batch-validate`, { method: "POST", body: JSON.stringify(data) });
+
+// ---------------------------------------------------------------------------
+// Phase 4 — Student read-only review
+// ---------------------------------------------------------------------------
+export const getAttemptReview = (attemptId: string) =>
+  apiFetch<AttemptReviewResponse>(`/exam/attempts/${attemptId}/review`);
+
+// ---------------------------------------------------------------------------
+// Phase 4 — Score complaints
+// ---------------------------------------------------------------------------
+export const fileComplaint = (attemptId: string, data: { question_id?: string; reason: string }) =>
+  apiFetch<ScoreComplaint>(`/exam/attempts/${attemptId}/complaints`, { method: "POST", body: JSON.stringify(data) });
+
+export const listAttemptComplaints = (attemptId: string) =>
+  apiFetch<ScoreComplaint[]>(`/exam/attempts/${attemptId}/complaints`);
+
+export const listTestComplaints = (testId: string) =>
+  apiFetch<ScoreComplaint[]>(`/exam/tests/${testId}/complaints`);
+
+export const resolveComplaint = (complaintId: string, data: { status: "approved" | "rejected"; review_note?: string; score_override?: number }) =>
+  apiFetch<ScoreComplaint>(`/exam/complaints/${complaintId}`, { method: "PATCH", body: JSON.stringify(data) });

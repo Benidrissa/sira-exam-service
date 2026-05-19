@@ -1,4 +1,4 @@
-"""Epic 1 data models — exam generation, review, and taking."""
+"""Epic 1 + Phase 4 data models — exam generation, review, taking, and class scheduling."""
 
 from __future__ import annotations
 
@@ -6,7 +6,18 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Enum, Float, ForeignKey, Integer, Text, func
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    Enum,
+    Float,
+    ForeignKey,
+    Integer,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -59,6 +70,19 @@ class DissertationStatus(str, enum.Enum):
     pending = "pending"
     ai_scored = "ai_scored"
     human_reviewed = "human_reviewed"
+
+
+class Quarter(str, enum.Enum):
+    q1 = "q1"
+    q2 = "q2"
+    q3 = "q3"
+    q4 = "q4"
+
+
+class ComplaintStatus(str, enum.Enum):
+    pending = "pending"
+    approved = "approved"
+    rejected = "rejected"
 
 
 # ---------------------------------------------------------------------------
@@ -257,6 +281,9 @@ class ExamTest(Base):
     attempts: Mapped[list[ExamAttempt]] = relationship(
         "ExamAttempt", back_populates="test", cascade="all, delete-orphan"
     )
+    assignments: Mapped[list[TestAssignment]] = relationship(
+        "TestAssignment", back_populates="test", cascade="all, delete-orphan"
+    )
 
 
 class ExamAttempt(Base):
@@ -282,12 +309,21 @@ class ExamAttempt(Base):
         DateTime(timezone=True), server_default=func.now()
     )
 
+    validation_status: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default="pending"
+    )
+    validated_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    validated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
     test: Mapped[ExamTest] = relationship("ExamTest", back_populates="attempts")
     dissertation_answers: Mapped[list[DissertationAnswer]] = relationship(
         "DissertationAnswer", back_populates="attempt", cascade="all, delete-orphan"
     )
     session: Mapped[ExamSession | None] = relationship(  # type: ignore[name-defined]  # noqa: F821
         "ExamSession", back_populates="attempt", uselist=False
+    )
+    complaints: Mapped[list[ScoreComplaint]] = relationship(
+        "ScoreComplaint", back_populates="attempt", cascade="all, delete-orphan"
     )
 
 
@@ -326,3 +362,127 @@ class DissertationAnswer(Base):
         "ExamAttempt", back_populates="dissertation_answers"
     )
     question: Mapped[ExamQuestion] = relationship("ExamQuestion")
+
+
+# ---------------------------------------------------------------------------
+# Phase 4 models
+# ---------------------------------------------------------------------------
+
+
+class SchoolClass(Base):
+    """Named cohort scoped to (org_id, name, academic_year). Tests are assigned to classes."""
+
+    __tablename__ = "school_classes"
+    __table_args__ = (
+        UniqueConstraint("org_id", "name", "academic_year", name="uq_school_class_org_name_year"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    academic_year: Mapped[str] = mapped_column(Text, nullable=False)
+    created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    members: Mapped[list[ClassMember]] = relationship(
+        "ClassMember", back_populates="school_class", cascade="all, delete-orphan"
+    )
+    assignments: Mapped[list[TestAssignment]] = relationship(
+        "TestAssignment", back_populates="school_class", cascade="all, delete-orphan"
+    )
+
+
+class ClassMember(Base):
+    """Enrollment record linking a student user_id to a SchoolClass."""
+
+    __tablename__ = "class_members"
+    __table_args__ = (UniqueConstraint("class_id", "user_id", name="uq_class_member"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    class_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("school_classes.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    added_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    school_class: Mapped[SchoolClass] = relationship("SchoolClass", back_populates="members")
+
+
+class TestAssignment(Base):
+    """Scheduled delivery of an ExamTest to a SchoolClass with a time window and quarter."""
+
+    __tablename__ = "test_assignments"
+    __table_args__ = (
+        UniqueConstraint("test_id", "class_id", name="uq_assignment_test_class"),
+        CheckConstraint("closes_at > released_at", name="ck_assignment_window_valid"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    test_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("exam_tests.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    class_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("school_classes.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    released_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    closes_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    quarter: Mapped[Quarter] = mapped_column(
+        Enum(Quarter, name="quarter", create_type=False),
+        nullable=False,
+    )
+    assigned_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    test: Mapped[ExamTest] = relationship("ExamTest", back_populates="assignments")
+    school_class: Mapped[SchoolClass] = relationship(
+        "SchoolClass", back_populates="assignments"
+    )
+
+
+class ScoreComplaint(Base):
+    """Student-initiated dispute on a question score or total attempt score."""
+
+    __tablename__ = "score_complaints"
+    __table_args__ = (
+        # Covers question-level uniqueness (NULL != NULL in PG so this only constrains non-null)
+        UniqueConstraint("attempt_id", "question_id", name="uq_complaint_per_question"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    attempt_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("exam_attempts.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    question_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("exam_questions.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    filed_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[ComplaintStatus] = mapped_column(
+        Enum(ComplaintStatus, name="complaintstatus", create_type=False),
+        nullable=False,
+        default=ComplaintStatus.pending,
+    )
+    reviewed_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    review_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    score_override: Mapped[float | None] = mapped_column(Float, nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    attempt: Mapped[ExamAttempt] = relationship("ExamAttempt", back_populates="complaints")
+    question: Mapped[ExamQuestion | None] = relationship("ExamQuestion")

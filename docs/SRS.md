@@ -15,6 +15,8 @@ The service covers:
 - Exam bank creation and AI-powered question generation (Phase 1)
 - Student exam sessions with MCQ and dissertation support (Phase 1)
 - Remote proctoring with webcam capture, violation detection, and evidence storage (Phase 2)
+- Edge AI lockdown hardening + identity verification (Phase 3)
+- Class roster management, test scheduling, score validation, and student score complaints (Phase 4)
 
 Out of scope: LMS core, user management, billing (handled by the parent Sira platform).
 
@@ -30,6 +32,10 @@ Out of scope: LMS core, user management, billing (handled by the parent Sira pla
 | ExamSession | Extended attempt with proctoring metadata (Phase 2) |
 | ProctorSnapshot | Periodic webcam frame stored in MinIO evidence bucket |
 | ProctorEvent | Violation or anomaly event recorded during a session |
+| SchoolClass | A named cohort scoped to `(org_id, name, academic_year)`; tests are assigned to classes (Phase 4) |
+| ClassMember | Enrollment record linking a student `user_id` to a `SchoolClass` (Phase 4) |
+| TestAssignment | Scheduled delivery of an `ExamTest` to a `SchoolClass` with `released_at`, `closes_at`, and `quarter` (Phase 4) |
+| ScoreComplaint | Student-initiated dispute on a question score or total attempt score (Phase 4) |
 
 ### 1.4 References
 - [ARCHITECTURE.md](ARCHITECTURE.md) — technical design
@@ -337,7 +343,262 @@ Endpoints: GET queue, GET session, GET snapshots (presigned URLs), POST acknowle
 
 ---
 
-## 6. Non-Functional Requirements
+## 6. Functional Requirements — Phase 4 (Class Scheduling, Score Validation & Complaints)
+
+### FR-4.1: Bank-to-Test Navigation
+**Priority:** P1
+
+- FR-4.1.1: `GET /api/v1/exam/banks/{id}/tests` returns all `ExamTest` rows for the bank, scoped to caller's `org_id`.
+- FR-4.1.2: Response includes `assignment_count` (number of `TestAssignment` rows) and `attempt_count` (submitted attempts) per test.
+- FR-4.1.3: Archiving a bank does not cascade-delete tests that have submitted attempts; service returns 409 when attempts exist.
+
+**Acceptance Criteria:**
+- AC1: GET returns 200 with all tests for the bank
+- AC2: Different-org teacher receives 404
+- AC3: DELETE bank with submitted attempts returns 409
+
+---
+
+### FR-4.2: SchoolClass CRUD
+**Priority:** P1
+
+- FR-4.2.1: `POST /api/v1/exam/classes` — creates a `SchoolClass(org_id, name, academic_year, created_by)`; 409 if `(org_id, name, academic_year)` already exists.
+- FR-4.2.2: `GET /api/v1/exam/classes` — returns all classes for caller's org; optional `?academic_year=` filter.
+- FR-4.2.3: `GET /api/v1/exam/classes/{id}` — returns class with member list; 404 for wrong org.
+- FR-4.2.4: `PATCH /api/v1/exam/classes/{id}` — partial update of `name` or `academic_year`.
+- FR-4.2.5: `DELETE /api/v1/exam/classes/{id}` — 409 if class has enrolled members; otherwise hard-delete.
+
+**Acceptance Criteria:**
+- AC1: POST returns 201 with all fields populated
+- AC2: Duplicate `(org_id, name, academic_year)` returns 409
+- AC3: DELETE with enrolled members returns 409
+- AC4: Wrong-org teacher receives 404
+
+---
+
+### FR-4.3: ClassMember Enrollment
+**Priority:** P1
+
+- FR-4.3.1: `POST /api/v1/exam/classes/{id}/members` — body: `{user_id: UUID}`; creates `ClassMember`; 409 on duplicate `(class_id, user_id)`.
+- FR-4.3.2: `GET /api/v1/exam/classes/{id}/members` — returns all enrolled members for the class.
+- FR-4.3.3: `DELETE /api/v1/exam/classes/{id}/members/{user_id}` — removes enrollment; 204 on success.
+- FR-4.3.4: `user_id` is the cross-service JWT identity; no lookup to Sira user table.
+
+**Acceptance Criteria:**
+- AC1: Enroll returns 201 with ClassMember row
+- AC2: Duplicate enrollment returns 409
+- AC3: DELETE returns 204; member no longer appears in list
+
+---
+
+### FR-4.4: TestAssignment Scheduling
+**Priority:** P1
+
+- FR-4.4.1: `POST /api/v1/exam/tests/{id}/assignments` — body: `{class_id, released_at, closes_at, quarter}`; creates `TestAssignment`; 422 if `closes_at ≤ released_at`; 409 if same `(test_id, class_id)` already assigned; 422 if test not `status=published`.
+- FR-4.4.2: `GET /api/v1/exam/tests/{id}/assignments` — returns all assignments for the test.
+- FR-4.4.3: `PATCH /api/v1/exam/tests/{id}/assignments/{assignment_id}` — update `released_at`, `closes_at`, or `quarter`; 409 if narrowing `closes_at` to past while open (unsubmitted) attempts exist.
+- FR-4.4.4: `DELETE /api/v1/exam/tests/{id}/assignments/{assignment_id}` — 409 if any attempts exist for this test; 204 otherwise.
+- FR-4.4.5: `quarter` values: `q1`, `q2`, `q3`, `q4`.
+
+**Acceptance Criteria:**
+- AC1: POST returns 201 with TestAssignment row
+- AC2: `closes_at ≤ released_at` returns 422
+- AC3: Assigning a draft test returns 422
+- AC4: Duplicate `(test_id, class_id)` returns 409
+
+---
+
+### FR-4.5: Class + Window Gate on Attempt Start
+**Priority:** P0 (guards all student exam access)
+
+- FR-4.5.1: `POST /exam/tests/{id}/start` — if the test has `TestAssignment` rows, enforce:
+  - At least one assignment has `released_at ≤ now ≤ closes_at` (window open).
+  - The requesting student's `user_id` is enrolled in the `class_id` of a valid open assignment.
+- FR-4.5.2: If no open window: 403 `"Test window not open"`.
+- FR-4.5.3: If window open but student not enrolled: 403 `"Not enrolled in any class for this test"`.
+- FR-4.5.4: Tests with **no assignments** are accessible to any authenticated student (backward compatibility with Phases 1–3).
+- FR-4.5.5: An in-progress attempt is not terminated when `closes_at` passes — the attempt timer governs completion.
+
+**Acceptance Criteria:**
+- AC1: Enrolled student within window → 201 (attempt created)
+- AC2: Unenrolled student → 403
+- AC3: Enrolled student, window not yet open → 403
+- AC4: Enrolled student, window closed → 403
+- AC5: Test with no assignments → 201 for any student (backward compat)
+
+---
+
+### FR-4.6: Student Test Discovery
+**Priority:** P1
+
+- FR-4.6.1: `GET /api/v1/exam/student/tests` — returns tests available to the authenticated student: finds all `ClassMember` rows for the student, then all `TestAssignment` rows where `now` is within `[released_at, closes_at]`, then the corresponding `ExamTest` rows.
+- FR-4.6.2: Response includes `has_attempted: bool` and `attempt_id: UUID | null` per test.
+- FR-4.6.3: Response includes `quarter`, `released_at`, `closes_at`, `class_name`, `academic_year` from the matching assignment.
+
+**Acceptance Criteria:**
+- AC1: Returns only tests in open windows for the student's enrolled classes
+- AC2: `has_attempted=true` if student has a submitted attempt for that test
+
+---
+
+### FR-4.7: Teacher Submission List
+**Priority:** P1
+
+- FR-4.7.1: `GET /api/v1/exam/tests/{id}/submissions` — returns all submitted `ExamAttempt` rows for the test (teacher only).
+- FR-4.7.2: Each row includes: `attempt_id`, `user_id`, `attempted_at`, `total_score`, `passed`, and per-status counts for dissertation answers (`pending_count`, `ai_scored_count`, `human_reviewed_count`).
+- FR-4.7.3: Test must belong to caller's org; 404 otherwise.
+
+**Acceptance Criteria:**
+- AC1: Returns all submitted attempts with correct per-status counts
+- AC2: Student cannot call this endpoint (403)
+- AC3: Wrong-org teacher receives 404
+
+---
+
+### FR-4.8: Individual Attempt Full Review (Teacher)
+**Priority:** P1
+
+- FR-4.8.1: `GET /api/v1/exam/attempts/{id}/full-review` — returns the attempt + all question/answer pairs side-by-side (teacher view, always includes correct answers).
+- FR-4.8.2: MCQ answers derived from `attempt.mcq_answers` JSONB; dissertation answers from `DissertationAnswer` rows.
+- FR-4.8.3: Test must belong to caller's org.
+
+**Acceptance Criteria:**
+- AC1: Returns all questions with submitted answers and correct answers
+- AC2: Wrong-org teacher receives 404
+
+---
+
+### FR-4.9: Attempt Score Validation
+**Priority:** P1
+
+- FR-4.9.1: `POST /api/v1/exam/attempts/{id}/validate` — marks the attempt's scores as teacher-confirmed.
+- FR-4.9.2: Guard: all `DissertationAnswer` rows for the attempt must be `status=human_reviewed`; if not, returns 422 with list of pending `answer_id` values.
+- FR-4.9.3: Idempotent: validating an already-validated attempt returns 200 (not 409).
+- FR-4.9.4: After validation, scores may only be changed via the complaint approval workflow (FR-4.16).
+
+**Acceptance Criteria:**
+- AC1: All dissertations human_reviewed → 200, attempt marked validated
+- AC2: Any dissertation pending/ai_scored → 422 with list of unreviewed answer IDs
+- AC3: Re-validating → 200 (idempotent)
+
+---
+
+### FR-4.10: Batch Score Validation
+**Priority:** P1
+
+- FR-4.10.1: `POST /api/v1/exam/tests/{id}/batch-validate` — body: `{attempt_ids: [UUID], override_score?: float}`.
+- FR-4.10.2: If `override_score` is null: validates each attempt using current scores (same guard as FR-4.9.2 per attempt).
+- FR-4.10.3: If `override_score` is set (0.0–100.0): applies that uniform `total_score` to all listed attempts, recomputes `passed`, marks validated. Individual `DissertationAnswer` rows are not modified.
+- FR-4.10.4: Max 100 `attempt_ids` per request.
+- FR-4.10.5: All `attempt_ids` must belong to the given `test_id` (org guard applies).
+- FR-4.10.6: Partial success: attempts that fail validation are returned in an `errors` list; successes are committed.
+
+**Acceptance Criteria:**
+- AC1: Batch of 5 attempts validated → 200 with `validated_count=5`
+- AC2: `override_score` set → total_score updated on all, `passed` recomputed
+- AC3: `attempt_ids` > 100 → 422
+- AC4: Attempt from different test → reported in `errors`, not committed
+
+---
+
+### FR-4.11: Teacher Grading Dashboard (Frontend)
+**Priority:** P2
+
+- FR-4.11.1: Page `/exams/[testId]/submissions` — table of all student attempts with columns: student, date, MCQ score, dissertation status counts, total score, validation status.
+- FR-4.11.2: Row click → navigate to individual review page.
+- FR-4.11.3: Multi-row checkbox → "Batch validate" button opens `BatchGradeDrawer`.
+- FR-4.11.4: Teacher can freely switch between individual and batch modes.
+
+---
+
+### FR-4.12: Student Attempt History
+**Priority:** P1
+
+- FR-4.12.1: `GET /api/v1/exam/student/history` — returns all submitted `ExamAttempt` rows for the authenticated student, across all tests.
+- FR-4.12.2: Each row includes: `attempt_id`, `test_id`, `test_title`, `attempted_at`, `total_score`, `passed`, `validation_status`.
+- FR-4.12.3: Scoped to the student's `user_id`; no cross-student access.
+
+**Acceptance Criteria:**
+- AC1: Returns all submitted attempts for the student
+- AC2: Different student cannot access another's history (403 on attempt-level review)
+
+---
+
+### FR-4.13: Student Read-Only Review
+**Priority:** P1
+
+- FR-4.13.1: `GET /api/v1/exam/attempts/{id}/review` — returns the student's own attempt in read-only mode.
+- FR-4.13.2: Guard: `attempt.user_id` must equal requesting `user_id`; 403 otherwise.
+- FR-4.13.3: Correct answers (`correct_answer_indices`, `explanation`, `model_answer`) are revealed only when **either**: `test.show_feedback=True` OR `test.closes_at < now` (test window has closed). Otherwise these fields are `null` in the response.
+- FR-4.13.4: Student's submitted answers are always visible in the response (no gate).
+- FR-4.13.5: Response includes `feedback_available: bool` to allow the frontend to render an appropriate banner.
+
+**Acceptance Criteria:**
+- AC1: Student sees own submitted answers always
+- AC2: Correct answers revealed when `show_feedback=True` or test window closed
+- AC3: Correct answers are null (not empty list) when review is locked
+- AC4: Different student → 403
+- AC5: `feedback_available` flag correctly set in response
+
+---
+
+### FR-4.14: Student History + Review (Frontend)
+**Priority:** P2
+
+- FR-4.14.1: Page `/students/me/attempts` — list of past attempts (test title, date, score, passed badge).
+- FR-4.14.2: Page `/attempts/[attemptId]/review` — read-only review. Banner shown when `feedback_available=false`: "Results available after [closes_at]".
+- FR-4.14.3: "Dispute score" button per question (and one for overall) visible when `feedback_available=true`.
+
+---
+
+### FR-4.15: Score Complaint Filing
+**Priority:** P1
+
+- FR-4.15.1: `POST /api/v1/exam/attempts/{id}/complaints` — body: `{question_id?: UUID, reason: str (≥20 chars)}`.
+- FR-4.15.2: Guard: `attempt.user_id == requesting user_id`; 403 otherwise.
+- FR-4.15.3: Guard: `attempt` must be submitted (not in-progress).
+- FR-4.15.4: One complaint per `(attempt_id, question_id)` pair; 409 on duplicate.
+- FR-4.15.5: One total-score complaint per attempt (`question_id=null`); 409 on duplicate.
+- FR-4.15.6: `GET /api/v1/exam/attempts/{id}/complaints` — student sees their own complaints for the attempt.
+
+**Acceptance Criteria:**
+- AC1: POST returns 201 with `status=pending`
+- AC2: Duplicate `(attempt_id, question_id)` → 409
+- AC3: `reason` < 20 chars → 422
+- AC4: Wrong student → 403
+
+---
+
+### FR-4.16: Complaint Review
+**Priority:** P1
+
+- FR-4.16.1: `GET /api/v1/exam/tests/{id}/complaints` — teacher sees all complaints for all attempts of the test.
+- FR-4.16.2: `PATCH /api/v1/exam/complaints/{id}` — body: `{status: "approved"|"rejected", review_note: str, score_override?: float}`.
+- FR-4.16.3: `review_note` is required when `status=rejected`; 422 if omitted.
+- FR-4.16.4: If `approved` and `score_override` provided on a question-level complaint: updates `DissertationAnswer.human_score`, recomputes `ExamAttempt.total_score` and `passed`.
+- FR-4.16.5: If `approved` and `score_override` provided on a total-score complaint: updates `ExamAttempt.total_score` directly, recomputes `passed`.
+- FR-4.16.6: Guard: complaint must be `status=pending`; 409 if already resolved.
+- FR-4.16.7: Test must belong to caller's org.
+
+**Acceptance Criteria:**
+- AC1: Approve → 200, `status=approved`
+- AC2: Reject without `review_note` → 422
+- AC3: Reject with `review_note` → 200, `status=rejected`
+- AC4: Approve with `score_override` on question complaint → DissertationAnswer updated, attempt total recomputed
+- AC5: Already-resolved complaint → 409
+
+---
+
+### FR-4.17: Score Complaint (Frontend)
+**Priority:** P2
+
+- FR-4.17.1: On `/attempts/[attemptId]/review`, a "Dispute score" button per question opens `ScoreComplaintModal` (reason text input, submit).
+- FR-4.17.2: Existing complaint shown as a status badge (pending / approved / rejected) instead of the button.
+- FR-4.17.3: On `/exams/[testId]/complaints`, teacher sees a table of all complaints with student info, status badge, and "Resolve" action (inline form with approved/rejected + note + optional score override).
+
+---
+
+## 7. Non-Functional Requirements
 
 ### 5.1 Performance
 - NFR-1: API p95 response time < 200ms for CRUD endpoints (excluding AI generation)
@@ -362,7 +623,7 @@ Endpoints: GET queue, GET session, GET snapshots (presigned URLs), POST acknowle
 
 ---
 
-## 7. System Constraints
+## 8. System Constraints
 
 - CON-1: Share PostgreSQL instance with Sira; use isolated schema `exam_svc`
 - CON-2: Share Redis instance; namespace all keys with `exam:`
@@ -372,7 +633,7 @@ Endpoints: GET queue, GET session, GET snapshots (presigned URLs), POST acknowle
 
 ---
 
-## 8. Acceptance Criteria Summary
+## 9. Acceptance Criteria Summary
 
 | FR | GitHub Issue | UAT Scenario | Phase |
 |----|-------------|--------------|-------|
@@ -401,3 +662,20 @@ Endpoints: GET queue, GET session, GET snapshots (presigned URLs), POST acknowle
 | FR-2.9 | #27 | US-11 | 2 |
 | FR-2.10 | #28 | US-9 (pre-check) | 2 |
 | FR-3.15 | #119 | US-13 | 3 |
+| FR-4.1 | — | US-14 | 4 |
+| FR-4.2 | — | US-15 | 4 |
+| FR-4.3 | — | US-15 | 4 |
+| FR-4.4 | — | US-16 | 4 |
+| FR-4.5 | — | US-15, US-16 | 4 |
+| FR-4.6 | — | US-16 | 4 |
+| FR-4.7 | — | US-17 | 4 |
+| FR-4.8 | — | US-17 | 4 |
+| FR-4.9 | — | US-17 | 4 |
+| FR-4.10 | — | US-17 | 4 |
+| FR-4.11 | — | US-17 | 4 |
+| FR-4.12 | — | US-18 | 4 |
+| FR-4.13 | — | US-18 | 4 |
+| FR-4.14 | — | US-18 | 4 |
+| FR-4.15 | — | US-19 | 4 |
+| FR-4.16 | — | US-19 | 4 |
+| FR-4.17 | — | US-19 | 4 |
