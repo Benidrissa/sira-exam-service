@@ -598,7 +598,7 @@ Endpoints: GET queue, GET session, GET snapshots (presigned URLs), POST acknowle
 
 ---
 
-## 6. Non-Functional Requirements
+## 7. Non-Functional Requirements
 
 ### 5.1 Performance
 - NFR-1: API p95 response time < 200ms for CRUD endpoints (excluding AI generation)
@@ -623,7 +623,7 @@ Endpoints: GET queue, GET session, GET snapshots (presigned URLs), POST acknowle
 
 ---
 
-## 7. System Constraints
+## 8. System Constraints
 
 - CON-1: Share PostgreSQL instance with Sira; use isolated schema `exam_svc`
 - CON-2: Share Redis instance; namespace all keys with `exam:`
@@ -633,7 +633,7 @@ Endpoints: GET queue, GET session, GET snapshots (presigned URLs), POST acknowle
 
 ---
 
-## 8. Acceptance Criteria Summary
+## 9. Acceptance Criteria Summary
 
 | FR | GitHub Issue | UAT Scenario | Phase |
 |----|-------------|--------------|-------|
