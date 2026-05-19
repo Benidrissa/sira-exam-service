@@ -233,20 +233,12 @@ async def resolve_complaint(
                     da.human_scored_at = datetime.now(tz=UTC)
                     await db.flush()
 
-                # Recompute attempt.total_score as sum of mcq_score + dissertation scores
-                all_da_result = await db.execute(
-                    select(DissertationAnswer).where(
-                        DissertationAnswer.attempt_id == complaint.attempt_id
-                    )
-                )
-                all_das = list(all_da_result.scalars().all())
-                dissertation_total = sum(
-                    (d.human_score or d.ai_score or 0.0) for d in all_das
-                )
-                mcq_part = attempt.mcq_score or 0.0
-                attempt.total_score = (mcq_part + dissertation_total) / max(
-                    1, 1 + len(all_das)
-                ) * 100.0  # normalise
+                # score_override is the new total_score for this attempt.
+                # Updating a single dissertation answer doesn't determine a valid
+                # total on its own (rubric units vs percentage units differ).
+                # Treat score_override as the authoritative new total, consistent
+                # with the batch_validate override path.
+                attempt.total_score = score_override
             else:
                 # Direct override of total_score
                 attempt.total_score = score_override

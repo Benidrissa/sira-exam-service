@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.domain.models.exam import (
     DissertationAnswer,
@@ -132,18 +133,14 @@ async def list_test_submissions(
             ExamAttempt.test_id == test_id,
             ExamAttempt.mcq_answers.isnot(None),
         )
+        .options(selectinload(ExamAttempt.dissertation_answers))
         .order_by(ExamAttempt.attempted_at.desc())
     )
     attempts = list(result.scalars().all())
 
     summaries = []
     for attempt in attempts:
-        # Load dissertation answers for this attempt
-        da_result = await db.execute(
-            select(DissertationAnswer).where(DissertationAnswer.attempt_id == attempt.id)
-        )
-        dissertation_answers = list(da_result.scalars().all())
-        counts = _dissertation_counts(dissertation_answers)
+        counts = _dissertation_counts(attempt.dissertation_answers)
 
         summaries.append(
             {
@@ -436,7 +433,7 @@ async def get_attempt_review(
         assignments = list(asgn_result.scalars().all())
         now = datetime.now(tz=UTC)
         if any(
-            a.closes_at is not None and a.closes_at.replace(tzinfo=UTC) < now
+            a.closes_at is not None and a.closes_at.astimezone(UTC) < now
             for a in assignments
         ):
             feedback_available = True
