@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams, usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { GraduationCap, Plus, LogOut, Shield } from "lucide-react";
+import { GraduationCap, Plus, LogOut, Shield, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -86,6 +86,21 @@ export function NavBar() {
                 <Link href={`/${locale}/create`}>
                   <Plus className="h-3.5 w-3.5" />
                   <span className="hidden sm:inline">New Exam</span>
+                </Link>
+              </Button>
+
+              {/* Classes */}
+              <Button
+                variant="ghost"
+                size="sm"
+                asChild
+                className={cn(
+                  isActive("/classes") && "bg-accent text-accent-foreground"
+                )}
+              >
+                <Link href={`/${locale}/classes`}>
+                  <Users className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">Classes</span>
                 </Link>
               </Button>
 

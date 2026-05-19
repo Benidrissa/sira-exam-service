@@ -24,6 +24,7 @@ import {
   FileText,
   AlertCircle,
   CheckCircle,
+  ClipboardList,
 } from "lucide-react";
 
 /* ── helpers ────────────────────────────────────────────────── */
@@ -243,6 +244,11 @@ function BankCard({ bank, locale }: { bank: ExamBank; locale: string }) {
             {bank.status === "published" && (
               <>
                 <Button variant="outline" size="sm" asChild disabled={!testId}>
+                  <Link href={testId ? `/${locale}/exams/${testId}/submissions` : "#"}>
+                    Submissions
+                  </Link>
+                </Button>
+                <Button variant="outline" size="sm" asChild disabled={!testId}>
                   <Link href={testId ? `/${locale}/exams/${testId}/results` : "#"}>
                     Grading
                   </Link>
@@ -342,9 +348,15 @@ function StudentDashboard({ locale }: { locale: string }) {
           )}
         </CardContent>
 
-        <CardFooter>
+        <CardFooter className="flex-col gap-3">
+          <Button variant="outline" size="sm" className="w-full" asChild>
+            <Link href={`/${locale}/students/me/attempts`}>
+              <ClipboardList className="h-3.5 w-3.5" />
+              My Exam History
+            </Link>
+          </Button>
           <p className="text-xs text-muted-foreground text-center w-full">
-            Your teacher will share the exam link with you directly.
+            Or paste a test link above to start a new exam.
           </p>
         </CardFooter>
       </Card>
