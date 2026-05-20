@@ -677,6 +677,8 @@ async def apply_human_score(
         graded_by=uuid.UUID(user.user_id),
         human_score=data.human_score,
         human_feedback=data.human_feedback,
+        ai_score_override=data.ai_score_override,
+        ai_feedback_override=data.ai_feedback_override,
     )
     return DissertationAnswerResponse.model_validate(answer)
 

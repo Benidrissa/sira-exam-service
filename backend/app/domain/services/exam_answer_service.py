@@ -47,7 +47,7 @@ async def list_for_review(
         .where(
             ExamAttempt.test_id == test_id,
             DissertationAnswer.status.in_(
-                [DissertationStatus.pending, DissertationStatus.ai_scored]
+                [DissertationStatus.pending, DissertationStatus.ai_scored, DissertationStatus.human_reviewed]
             ),
         )
         .order_by(DissertationAnswer.attempt_id)
@@ -63,6 +63,8 @@ async def apply_human_score(
     graded_by: uuid.UUID,
     human_score: float,
     human_feedback: str,
+    ai_score_override: float | None = None,
+    ai_feedback_override: str | None = None,
 ) -> DissertationAnswer:
     """Apply teacher grade to a dissertation answer (FR-1.9.2).
 
@@ -97,6 +99,10 @@ async def apply_human_score(
     answer.human_scored_by = graded_by
     answer.human_scored_at = datetime.now(tz=UTC)
     answer.status = DissertationStatus.human_reviewed
+    if ai_score_override is not None:
+        answer.ai_score = ai_score_override
+    if ai_feedback_override is not None:
+        answer.ai_feedback = ai_feedback_override
     await db.commit()
     await db.refresh(answer)
     return answer

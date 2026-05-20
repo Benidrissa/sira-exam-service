@@ -286,6 +286,8 @@ class StartAttemptResponse(BaseModel):
 class HumanScoreUpdate(BaseModel):
     human_score: float = Field(..., ge=0.0)
     human_feedback: str = Field(..., min_length=1, max_length=5000)
+    ai_score_override: float | None = Field(None, ge=0.0, le=100.0)
+    ai_feedback_override: str | None = Field(None, max_length=5000)
 
 
 # ---------------------------------------------------------------------------
