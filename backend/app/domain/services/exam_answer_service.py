@@ -47,7 +47,11 @@ async def list_for_review(
         .where(
             ExamAttempt.test_id == test_id,
             DissertationAnswer.status.in_(
-                [DissertationStatus.pending, DissertationStatus.ai_scored, DissertationStatus.human_reviewed]
+                [
+                    DissertationStatus.pending,
+                    DissertationStatus.ai_scored,
+                    DissertationStatus.human_reviewed,
+                ]
             ),
         )
         .order_by(DissertationAnswer.attempt_id)

@@ -522,7 +522,7 @@ class TestAssignmentCreate(BaseModel):
     quarter: Quarter
 
     @model_validator(mode="after")
-    def validate_window(self) -> "TestAssignmentCreate":
+    def validate_window(self) -> TestAssignmentCreate:
         if self.closes_at <= self.released_at:
             raise ValueError("closes_at must be after released_at")
         return self

@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime as dt
+from datetime import UTC
+from datetime import datetime as dt
 
 from fastapi import HTTPException, status
 from sqlalchemy import func, select
@@ -21,7 +22,6 @@ from app.domain.models.exam import (
     TestAssignment,
     TestStatus,
 )
-
 
 # ---------------------------------------------------------------------------
 # SchoolClass CRUD
@@ -345,7 +345,9 @@ async def delete_assignment(
 
     # 409 if any ExamAttempt exists for the test
     attempt_count = await db.scalar(
-        select(func.count()).select_from(ExamAttempt).where(ExamAttempt.test_id == assignment.test_id)
+        select(func.count())
+        .select_from(ExamAttempt)
+        .where(ExamAttempt.test_id == assignment.test_id)
     )
     if attempt_count:
         raise HTTPException(
