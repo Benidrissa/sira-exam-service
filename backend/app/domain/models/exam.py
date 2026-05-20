@@ -137,6 +137,8 @@ class ExamBank(Base):
     )
     generation_task_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     generation_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    course_code: Mapped[str | None] = mapped_column(Text, nullable=True)
+    course_name: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -381,6 +383,7 @@ class SchoolClass(Base):
     academic_year: Mapped[str] = mapped_column(Text, nullable=False)
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     members: Mapped[list[ClassMember]] = relationship(
         "ClassMember", back_populates="school_class", cascade="all, delete-orphan"
@@ -482,3 +485,59 @@ class ScoreComplaint(Base):
 
     attempt: Mapped[ExamAttempt] = relationship("ExamAttempt", back_populates="complaints")
     question: Mapped[ExamQuestion | None] = relationship("ExamQuestion")
+
+
+class ExamAccessGrant(Base):
+    """Admin grant allowing a student to review an exam bank/test without class enrollment."""
+
+    __tablename__ = "exam_access_grants"
+    __table_args__ = (
+        CheckConstraint(
+            "bank_id IS NOT NULL OR test_id IS NOT NULL",
+            name="ck_grant_target",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    bank_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("exam_banks.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    test_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("exam_tests.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    student_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    granted_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    org_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    granted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ReviewAuditLog(Base):
+    """Immutable log entry for every change to a DissertationAnswer human score."""
+
+    __tablename__ = "review_audit_logs"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    answer_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("dissertation_answers.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    attempt_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    test_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    org_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    actor_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    actor_role: Mapped[str] = mapped_column(Text, nullable=False)
+    action: Mapped[str] = mapped_column(Text, nullable=False)
+    old_values: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    new_values: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    occurred_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )

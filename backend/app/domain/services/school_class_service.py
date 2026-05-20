@@ -91,12 +91,17 @@ async def update_class(
     org_id: uuid.UUID,
     name: str | None = None,
     academic_year: str | None = None,
+    archive: bool | None = None,
 ) -> SchoolClass:
     school_class = await get_class(db, class_id=class_id, org_id=org_id)
     if name is not None:
         school_class.name = name
     if academic_year is not None:
         school_class.academic_year = academic_year
+    if archive is True:
+        school_class.archived_at = dt.now(tz=UTC)
+    elif archive is False:
+        school_class.archived_at = None
     try:
         await db.commit()
         await db.refresh(school_class)
