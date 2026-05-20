@@ -6,6 +6,7 @@ import type {
   BulkValidationResponse,
   ClassMember,
   DissertationAnswer,
+  ExamAccessGrant,
   ExamAttempt,
   ExamBank,
   ExamQuestion,
@@ -15,6 +16,7 @@ import type {
   GenerationStatusResponse,
   ProctoringSession,
   Quarter,
+  ReviewAuditLogEntry,
   ScenarioBrief,
   SchoolClass,
   SchoolClassDetail,
@@ -481,3 +483,27 @@ export const listTestComplaints = (testId: string) =>
 
 export const resolveComplaint = (complaintId: string, data: { status: "approved" | "rejected"; review_note?: string; score_override?: number }) =>
   apiFetch<ScoreComplaint>(`/exam/complaints/${complaintId}`, { method: "PATCH", body: JSON.stringify(data) });
+
+// ---------------------------------------------------------------------------
+// FR-4.21 — Review audit log
+// ---------------------------------------------------------------------------
+export const getAuditLog = (testId: string) =>
+  apiFetch<ReviewAuditLogEntry[]>(`/exam/tests/${testId}/audit-log`);
+
+// ---------------------------------------------------------------------------
+// FR-4.20 — Exam access grants
+// ---------------------------------------------------------------------------
+export const createAccessGrant = (data: { bank_id?: string; test_id?: string; student_id: string; expires_at?: string }) =>
+  apiFetch<ExamAccessGrant>("/exam/grants", { method: "POST", body: JSON.stringify(data) });
+
+export const revokeAccessGrant = (grantId: string) =>
+  apiFetch<void>(`/exam/grants/${grantId}`, { method: "DELETE" });
+
+export const listAccessGrants = () =>
+  apiFetch<ExamAccessGrant[]>("/exam/grants");
+
+// ---------------------------------------------------------------------------
+// FR-4.19 — Class archival helper
+// ---------------------------------------------------------------------------
+export const updateClass = (classId: string, data: { name?: string; academic_year?: string; archive?: boolean }) =>
+  apiFetch<SchoolClass>(`/exam/classes/${classId}`, { method: "PATCH", body: JSON.stringify(data) });

@@ -16,6 +16,7 @@ from app.domain.models.exam import (
     ExamBank,
     ExamQuestion,
     ExamTest,
+    ReviewAuditLog,
 )
 
 
@@ -98,6 +99,14 @@ async def apply_human_score(
             detail=f"human_score ({human_score}) exceeds rubric maximum ({max_pts}).",
         )
 
+    old_values: dict = {
+        "human_score": answer.human_score,
+        "human_feedback": answer.human_feedback,
+        "ai_score": answer.ai_score,
+        "ai_feedback": answer.ai_feedback,
+        "status": answer.status.value,
+    }
+
     answer.human_score = human_score
     answer.human_feedback = human_feedback
     answer.human_scored_by = graded_by
@@ -107,6 +116,33 @@ async def apply_human_score(
         answer.ai_score = ai_score_override
     if ai_feedback_override is not None:
         answer.ai_feedback = ai_feedback_override
+
+    # Load attempt to get test_id for the audit log
+    attempt_result = await db.execute(
+        select(ExamAttempt).where(ExamAttempt.id == answer.attempt_id)
+    )
+    attempt = attempt_result.scalar_one_or_none()
+
+    new_values: dict = {
+        "human_score": answer.human_score,
+        "human_feedback": answer.human_feedback,
+        "ai_score": answer.ai_score,
+        "ai_feedback": answer.ai_feedback,
+        "status": answer.status.value,
+    }
+
+    audit_entry = ReviewAuditLog(
+        answer_id=answer_id,
+        attempt_id=answer.attempt_id,
+        test_id=attempt.test_id if attempt else uuid.UUID(int=0),
+        org_id=org_id,
+        actor_id=graded_by,
+        actor_role="teacher",
+        action="human_score_applied",
+        old_values=old_values,
+        new_values=new_values,
+    )
+    db.add(audit_entry)
     await db.commit()
     await db.refresh(answer)
     return answer

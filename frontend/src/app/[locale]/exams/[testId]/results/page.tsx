@@ -5,6 +5,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getDissertationReview, patchHumanScore } from "@/lib/api";
+import { AuditLogPanel } from "@/components/AuditLogPanel";
 import type { DissertationAnswer } from "@/types/exam";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
@@ -90,6 +91,8 @@ function TeacherGradingView({ testId, locale }: { testId: string; locale: string
           <Home className="mr-2 h-4 w-4" /> Return Home
         </Button>
       </div>
+
+      <AuditLogPanel testId={testId} />
     </main>
   );
 }

@@ -1,13 +1,15 @@
 "use client";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { createSchoolClass, listSchoolClasses } from "@/lib/api";
+import { createSchoolClass, listSchoolClasses, updateClass } from "@/lib/api";
 import type { SchoolClass } from "@/types/exam";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { Archive, ArchiveRestore } from "lucide-react";
 
 function getRoleFromCookie(): string | null {
   if (typeof document === "undefined") return null;
@@ -44,6 +46,12 @@ export default function ClassesPage() {
     onError: (e) => setCreateError(String(e)),
   });
 
+  const archiveMutation = useMutation({
+    mutationFn: ({ classId, archive }: { classId: string; archive: boolean }) =>
+      updateClass(classId, { archive }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["school-classes"] }),
+  });
+
   if (isLoading) return <div className="p-8">Loading…</div>;
   if (error) return <p className="p-8 text-destructive">{String(error)}</p>;
 
@@ -72,15 +80,35 @@ export default function ClassesPage() {
       <div className="space-y-3">
         {classes?.length === 0 && <p className="text-muted-foreground">No classes yet.</p>}
         {classes?.map((c: SchoolClass) => (
-          <Card key={c.id}>
+          <Card key={c.id} className={c.archived_at ? "opacity-60" : ""}>
             <CardContent className="flex items-center justify-between py-4">
               <div>
-                <p className="font-semibold">{c.name}</p>
+                <div className="flex items-center gap-2">
+                  <p className="font-semibold">{c.name}</p>
+                  {c.archived_at && (
+                    <Badge variant="secondary" className="text-xs">Archived</Badge>
+                  )}
+                </div>
                 <p className="text-sm text-muted-foreground">{c.academic_year}</p>
               </div>
-              <Link href={`/${locale}/classes/${c.id}`}>
-                <Button variant="outline" size="sm">Manage →</Button>
-              </Link>
+              <div className="flex items-center gap-2">
+                {isTeacher && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => archiveMutation.mutate({ classId: c.id, archive: !c.archived_at })}
+                    disabled={archiveMutation.isPending}
+                    title={c.archived_at ? "Unarchive" : "Archive"}
+                  >
+                    {c.archived_at
+                      ? <ArchiveRestore className="h-4 w-4" />
+                      : <Archive className="h-4 w-4" />}
+                  </Button>
+                )}
+                <Link href={`/${locale}/classes/${c.id}`}>
+                  <Button variant="outline" size="sm">Manage →</Button>
+                </Link>
+              </div>
             </CardContent>
           </Card>
         ))}

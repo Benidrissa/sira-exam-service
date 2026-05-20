@@ -30,6 +30,8 @@ class ExamBankCreate(BaseModel):
     subject: str | None = None
     language: str = "fr"
     passing_score: float = Field(80.0, ge=0.0, le=100.0)
+    course_code: str | None = Field(None, max_length=32)
+    course_name: str | None = None
 
 
 class ExamBankUpdate(BaseModel):
@@ -39,6 +41,8 @@ class ExamBankUpdate(BaseModel):
     language: str | None = None
     passing_score: float | None = Field(None, ge=0.0, le=100.0)
     status: BankStatus | None = None
+    course_code: str | None = Field(None, max_length=32)
+    course_name: str | None = None
 
 
 class ExamBankResponse(BaseModel):
@@ -55,6 +59,8 @@ class ExamBankResponse(BaseModel):
     status: BankStatus
     generation_task_id: str | None
     generation_error: str | None
+    course_code: str | None
+    course_name: str | None
     created_at: datetime
     updated_at: datetime
 
@@ -370,6 +376,11 @@ class AttemptSubmissionSummary(BaseModel):
     pending_count: int
     ai_scored_count: int
     human_reviewed_count: int
+    class_id: uuid.UUID | None = None
+    class_name: str | None = None
+    class_archived_at: datetime | None = None
+    course_code: str | None = None
+    course_name: str | None = None
 
 
 class ReviewQuestionAnswer(BaseModel):
@@ -421,6 +432,13 @@ class StudentAttemptHistoryItem(BaseModel):
     total_score: float | None
     passed: bool | None
     validation_status: str
+    class_id: uuid.UUID | None = None
+    class_name: str | None = None
+    academic_year: str | None = None
+    class_archived_at: datetime | None = None
+    course_code: str | None = None
+    course_name: str | None = None
+    review_allowed: bool = False
 
 
 class BatchValidateRequest(BaseModel):
@@ -484,6 +502,7 @@ class SchoolClassCreate(BaseModel):
 class SchoolClassUpdate(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=200)
     academic_year: str | None = Field(None, pattern=r"^\d{4}-\d{4}$")
+    archive: bool | None = None
 
 
 class SchoolClassResponse(BaseModel):
@@ -495,6 +514,7 @@ class SchoolClassResponse(BaseModel):
     academic_year: str
     created_by: uuid.UUID
     created_at: datetime
+    archived_at: datetime | None = None
 
 
 class ClassMemberCreate(BaseModel):
@@ -558,3 +578,54 @@ class StudentTestSummary(BaseModel):
     academic_year: str
     has_attempted: bool
     attempt_id: uuid.UUID | None
+
+
+# ---------------------------------------------------------------------------
+# FR-4.20 — Exam access grants
+# ---------------------------------------------------------------------------
+
+
+class ExamAccessGrantCreate(BaseModel):
+    bank_id: uuid.UUID | None = None
+    test_id: uuid.UUID | None = None
+    student_id: uuid.UUID
+    expires_at: datetime | None = None
+
+    @model_validator(mode="after")
+    def require_target(self) -> ExamAccessGrantCreate:
+        if self.bank_id is None and self.test_id is None:
+            raise ValueError("At least one of bank_id or test_id must be provided")
+        return self
+
+
+class ExamAccessGrantResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    bank_id: uuid.UUID | None
+    test_id: uuid.UUID | None
+    student_id: uuid.UUID
+    granted_by: uuid.UUID
+    org_id: uuid.UUID
+    granted_at: datetime
+    expires_at: datetime | None
+
+
+# ---------------------------------------------------------------------------
+# FR-4.21 — Review audit log
+# ---------------------------------------------------------------------------
+
+
+class ReviewAuditLogEntry(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    answer_id: uuid.UUID
+    attempt_id: uuid.UUID
+    test_id: uuid.UUID
+    actor_id: uuid.UUID
+    actor_role: str
+    action: str
+    old_values: dict | None
+    new_values: dict
+    occurred_at: datetime

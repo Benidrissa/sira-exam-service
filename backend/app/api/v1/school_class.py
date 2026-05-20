@@ -107,6 +107,7 @@ async def update_school_class(
         org_id=_org(user),
         name=data.name,
         academic_year=data.academic_year,
+        archive=data.archive,
     )
     return SchoolClassResponse.model_validate(school_class)
 

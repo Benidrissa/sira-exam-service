@@ -11,13 +11,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.domain.models.exam import (
+    ClassMember,
     DissertationAnswer,
     DissertationStatus,
+    ExamAccessGrant,
     ExamAttempt,
     ExamBank,
     ExamQuestion,
     ExamTest,
     QuestionType,
+    ReviewAuditLog,
+    TestAssignment,
 )
 
 # ---------------------------------------------------------------------------
@@ -118,8 +122,12 @@ async def list_test_submissions(
 
     Guard: test must belong to org_id (via bank.org_id). 404 otherwise.
     A 'submitted' attempt has mcq_answers IS NOT NULL.
+    Each row is enriched with class + course info via TestAssignment → SchoolClass.
     """
-    await _get_test_with_org_guard(db, test_id=test_id, org_id=org_id)
+    test = await _get_test_with_org_guard(db, test_id=test_id, org_id=org_id)
+
+    # Load bank for course fields
+    bank = await db.get(ExamBank, test.bank_id)
 
     result = await db.execute(
         select(ExamAttempt)
@@ -132,9 +140,29 @@ async def list_test_submissions(
     )
     attempts = list(result.scalars().all())
 
+    # Load all assignments for this test to find class info per attempt
+    asgn_result = await db.execute(
+        select(TestAssignment)
+        .options(selectinload(TestAssignment.school_class))
+        .where(TestAssignment.test_id == test_id)
+        .order_by(TestAssignment.released_at.desc())
+    )
+    assignments = list(asgn_result.scalars().all())
+
     summaries = []
     for attempt in attempts:
         counts = _dissertation_counts(attempt.dissertation_answers)
+
+        # Find the class for this attempt: pick the assignment whose class includes the student
+        # (simplified: use first/most-recent assignment class for the test)
+        class_id: uuid.UUID | None = None
+        class_name: str | None = None
+        class_archived_at: datetime | None = None
+        if assignments:
+            asgn = assignments[0]
+            class_id = asgn.class_id
+            class_name = asgn.school_class.name
+            class_archived_at = asgn.school_class.archived_at
 
         summaries.append(
             {
@@ -146,6 +174,11 @@ async def list_test_submissions(
                 "total_score": attempt.total_score,
                 "passed": attempt.passed,
                 "validation_status": attempt.validation_status,
+                "class_id": class_id,
+                "class_name": class_name,
+                "class_archived_at": class_archived_at,
+                "course_code": bank.course_code if bank else None,
+                "course_name": bank.course_name if bank else None,
                 **counts,
             }
         )
@@ -346,9 +379,9 @@ async def list_student_history(
     user_id: uuid.UUID,
     org_id: uuid.UUID,
 ) -> list[dict]:
-    """List all submitted attempts for the student, scoped to their org."""
+    """List all submitted attempts for the student enriched with class + course info."""
     result = await db.execute(
-        select(ExamAttempt, ExamTest)
+        select(ExamAttempt, ExamTest, ExamBank)
         .join(ExamTest, ExamAttempt.test_id == ExamTest.id)
         .join(ExamBank, ExamTest.bank_id == ExamBank.id)
         .where(
@@ -360,18 +393,75 @@ async def list_student_history(
     )
     rows = result.all()
 
-    return [
-        {
-            "attempt_id": attempt.id,
-            "test_id": attempt.test_id,
-            "test_title": test.title,
-            "attempted_at": attempt.attempted_at,
-            "total_score": attempt.total_score,
-            "passed": attempt.passed,
-            "validation_status": attempt.validation_status,
-        }
-        for attempt, test in rows
-    ]
+    now = datetime.now(tz=UTC)
+
+    items = []
+    for attempt, test, bank in rows:
+        # Find class for this attempt via TestAssignment + ClassMember
+        asgn_result = await db.execute(
+            select(TestAssignment)
+            .options(selectinload(TestAssignment.school_class))
+            .join(ClassMember, TestAssignment.class_id == ClassMember.class_id)
+            .where(
+                TestAssignment.test_id == attempt.test_id,
+                ClassMember.user_id == user_id,
+            )
+            .order_by(TestAssignment.released_at.desc())
+            .limit(1)
+        )
+        asgn = asgn_result.scalar_one_or_none()
+
+        class_id: uuid.UUID | None = None
+        class_name: str | None = None
+        academic_year: str | None = None
+        class_archived_at: datetime | None = None
+        review_allowed = bool(test.show_feedback)
+
+        if asgn is not None:
+            class_id = asgn.class_id
+            class_name = asgn.school_class.name
+            academic_year = asgn.school_class.academic_year
+            class_archived_at = asgn.school_class.archived_at
+            if not review_allowed and asgn.closes_at.astimezone(UTC) < now:
+                review_allowed = True
+
+        # Check access grant if still not allowed
+        if not review_allowed:
+            grant_result = await db.execute(
+                select(ExamAccessGrant).where(
+                    ExamAccessGrant.student_id == user_id,
+                    ExamAccessGrant.org_id == org_id,
+                    (
+                        (ExamAccessGrant.test_id == attempt.test_id)
+                        | (ExamAccessGrant.bank_id == test.bank_id)
+                    ),
+                )
+            )
+            grant = grant_result.scalar_one_or_none()
+            if grant is not None and (
+                grant.expires_at is None or grant.expires_at.astimezone(UTC) > now
+            ):
+                review_allowed = True
+
+        items.append(
+            {
+                "attempt_id": attempt.id,
+                "test_id": attempt.test_id,
+                "test_title": test.title,
+                "attempted_at": attempt.attempted_at,
+                "total_score": attempt.total_score,
+                "passed": attempt.passed,
+                "validation_status": attempt.validation_status,
+                "class_id": class_id,
+                "class_name": class_name,
+                "academic_year": academic_year,
+                "class_archived_at": class_archived_at,
+                "course_code": bank.course_code,
+                "course_name": bank.course_name,
+                "review_allowed": review_allowed,
+            }
+        )
+    return items
 
 
 # ---------------------------------------------------------------------------
@@ -456,3 +546,86 @@ async def get_attempt_review(
         "feedback_available": feedback_available,
         "questions": q_list,
     }
+
+
+# ---------------------------------------------------------------------------
+# FR-4.21: Review audit log
+# ---------------------------------------------------------------------------
+
+
+async def list_audit_logs(
+    db: AsyncSession,
+    *,
+    test_id: uuid.UUID,
+    org_id: uuid.UUID,
+) -> list[ReviewAuditLog]:
+    """Return all review audit log entries for a test, ordered newest-first."""
+    await _get_test_with_org_guard(db, test_id=test_id, org_id=org_id)
+
+    result = await db.execute(
+        select(ReviewAuditLog)
+        .where(ReviewAuditLog.test_id == test_id, ReviewAuditLog.org_id == org_id)
+        .order_by(ReviewAuditLog.occurred_at.desc())
+    )
+    return list(result.scalars().all())
+
+
+# ---------------------------------------------------------------------------
+# FR-4.20: Exam access grants
+# ---------------------------------------------------------------------------
+
+
+async def create_access_grant(
+    db: AsyncSession,
+    *,
+    org_id: uuid.UUID,
+    granted_by: uuid.UUID,
+    student_id: uuid.UUID,
+    bank_id: uuid.UUID | None,
+    test_id: uuid.UUID | None,
+    expires_at: datetime | None,
+) -> ExamAccessGrant:
+    grant = ExamAccessGrant(
+        bank_id=bank_id,
+        test_id=test_id,
+        student_id=student_id,
+        granted_by=granted_by,
+        org_id=org_id,
+        expires_at=expires_at,
+    )
+    db.add(grant)
+    await db.commit()
+    await db.refresh(grant)
+    return grant
+
+
+async def revoke_access_grant(
+    db: AsyncSession,
+    *,
+    grant_id: uuid.UUID,
+    org_id: uuid.UUID,
+) -> None:
+    result = await db.execute(
+        select(ExamAccessGrant).where(
+            ExamAccessGrant.id == grant_id,
+            ExamAccessGrant.org_id == org_id,
+        )
+    )
+    grant = result.scalar_one_or_none()
+    if grant is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Grant not found")
+    await db.delete(grant)
+    await db.commit()
+
+
+async def list_access_grants(
+    db: AsyncSession,
+    *,
+    org_id: uuid.UUID,
+) -> list[ExamAccessGrant]:
+    result = await db.execute(
+        select(ExamAccessGrant)
+        .where(ExamAccessGrant.org_id == org_id)
+        .order_by(ExamAccessGrant.granted_at.desc())
+    )
+    return list(result.scalars().all())

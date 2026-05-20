@@ -588,3 +588,122 @@
 - [ ] AC7: Different student cannot file complaint on another's attempt → 403
 
 ### Linked FRs: FR-4.15, FR-4.16, FR-4.17
+
+---
+
+## US-20: Teacher Views Submissions Organised by Class
+
+**As a** Teacher
+**I want to** see student submissions grouped by class with archived classes collapsed
+**So that** I can quickly find the right cohort's submissions without scrolling through a flat list
+
+### Preconditions
+- Authenticated teacher JWT
+- At least one TestAssignment linking the test to a SchoolClass
+- At least one student has submitted
+
+### Steps
+1. Teacher: `GET /api/v1/exam/tests/{testId}/submissions` → each row includes `class_name`, `course_code`, `course_name`, `class_archived_at`
+2. Frontend groups rows by `class_name`; active classes expanded, archived classes collapsed with "Archived" badge
+3. Rows with no class appear under "Unclassified"
+4. Teacher clicks "Review →" on a row → navigates to individual attempt review
+5. Teacher archives a class: `PATCH /api/v1/exam/classes/{id}` `{archive: true}` → `archived_at` set
+6. Refresh page → archived class section auto-collapses
+
+### Acceptance Criteria
+- [ ] AC1: Submission rows include `class_name`, `course_code`, `course_name`, `class_archived_at`
+- [ ] AC2: Frontend collapses sections where `class_archived_at IS NOT NULL`
+- [ ] AC3: Unclassified section appears when attempt has no matching assignment
+- [ ] AC4: PATCH with `archive=true` → 200, `archived_at` populated
+
+### Linked FRs: FR-4.7, FR-4.18, FR-4.19, FR-4.22
+
+---
+
+## US-21: Student Sees Exam History Grouped by Course and Class
+
+**As a** Student
+**I want to** see my past exams organised by course and class, with old classes collapsed
+**So that** I can quickly find a specific exam and review my results
+
+### Preconditions
+- Student is enrolled in at least one class via ClassMember
+- Student has submitted attempts for tests assigned to that class
+- Some attempts belong to an archived class
+
+### Steps
+1. Student: navigates to `/students/me/attempts`
+2. Page calls `GET /api/v1/exam/student/history`
+3. Response rows include `course_code`, `course_name`, `class_name`, `academic_year`, `class_archived_at`
+4. Frontend groups by course → then by class; archived class sub-sections are collapsed/faded
+5. Student expands an archived section → sees past attempts
+6. Student clicks "Review" on a passed attempt → feedback is shown (window closed)
+7. Student clicks "Review" on an attempt whose window is not yet closed and `show_feedback=False` → correct answers hidden
+
+### Acceptance Criteria
+- [ ] AC1: History rows include `course_code`, `course_name`, `class_name`, `academic_year`, `class_archived_at`
+- [ ] AC2: Active class groups expanded; archived groups collapsed by default
+- [ ] AC3: "Review" button visible on all attempts; feedback gate applied per FR-4.13.3
+- [ ] AC4: Attempts without class/course appear under "Other"
+
+### Linked FRs: FR-4.12, FR-4.13, FR-4.18, FR-4.19, FR-4.23, FR-4.24
+
+---
+
+## US-22: Audit Trail for Student Review Changes
+
+**As a** Teacher or Admin
+**I want to** see a complete log of every change made to a student's dissertation review
+**So that** I can detect errors, track who changed what, and ensure grading integrity
+
+### Preconditions
+- Teacher has applied at least one human score via PATCH /exam/answers/{id}/human-score
+- Teacher JWT with access to the test
+
+### Steps
+1. Teacher: `PATCH /api/v1/exam/answers/{answerId}/human-score` with `{human_score: 15.0, human_feedback: "Good effort."}` → 200
+2. Teacher: `GET /api/v1/exam/tests/{testId}/audit-log` → one ReviewAuditLog entry with `action="human_score_applied"`, `old_values={human_score: null}`, `new_values={human_score: 15.0}`, `actor_id=teacherId`, `actor_role="teacher"`
+3. Teacher revises score: same PATCH with `{human_score: 18.0}` → 200
+4. GET audit-log → two entries, second entry shows `old_values={human_score: 15.0}`, `new_values={human_score: 18.0}`
+5. Student calls GET audit-log → 403
+
+### Acceptance Criteria
+- [ ] AC1: Every PATCH human-score creates exactly one ReviewAuditLog row
+- [ ] AC2: `old_values` captures state before change; `new_values` captures state after
+- [ ] AC3: GET /exam/tests/{id}/audit-log returns all entries sorted by `occurred_at desc`
+- [ ] AC4: Student cannot call GET audit-log → 403
+- [ ] AC5: Audit log is immutable — no update or delete endpoints
+
+### Linked FRs: FR-4.21
+
+---
+
+## US-23: Anonymous Dissertation Grading
+
+**As a** Teacher  
+**I want to** review and grade dissertation answers identified only by a random code instead of the student's name or ID  
+**So that** I cannot unconsciously let knowledge of the student's identity bias my scoring
+
+### Preconditions
+- ExamTest configured with `anonymous_grading=True`
+- At least two students have submitted the test with dissertation answers in `status=ai_scored`
+- Teacher JWT with access to the test's org
+
+### Steps
+1. Teacher: `POST /api/v1/exam/banks/{id}/tests` or `PATCH /api/v1/exam/tests/{id}` with `{anonymous_grading: true}` → 200/201
+2. Teacher: `GET /api/v1/exam/tests/{testId}/submissions` → rows show `anon_id` (e.g. `"a3f7…"`) instead of `user_id`; no student name in payload
+3. Teacher: `GET /api/v1/exam/attempts/{attemptId}/full-review` (using `attempt_id` from step 2) → student identity absent; only `anon_id`, answers, and AI score visible
+4. Teacher grades all dissertation answers via `PATCH /api/v1/exam/answers/{id}/human-score`
+5. Teacher validates all attempts (step-by-step or batch)
+6. Teacher: `GET /api/v1/exam/tests/{testId}/anon-mapping` (before all attempts validated) → 409 `"Scoring not complete — unvalidated attempts remain"`
+7. After all attempts validated: same `GET …/anon-mapping` → 200 with `[{anon_id, user_id}]` list — teacher can now correlate scores to students
+
+### Acceptance Criteria
+- [ ] AC1: Submission list with `anonymous_grading=True` exposes `anon_id`, not `user_id`; no student-identifiable field present
+- [ ] AC2: `anon_id` is the same in `/submissions`, `/full-review`, and `/complaints` for the same attempt
+- [ ] AC3: `GET /anon-mapping` returns 409 while any submitted attempt is unvalidated
+- [ ] AC4: After all attempts validated → `/anon-mapping` returns `[{anon_id, user_id}]` for every submitted attempt
+- [ ] AC5: Test with `anonymous_grading=False` (default) → `user_id` returned as before (no regression)
+- [ ] AC6: Student's own attempt flow (start, submit, review) is unaffected by the anonymous_grading flag
+
+### Linked FRs: FR-4.24

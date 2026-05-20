@@ -598,6 +598,117 @@ Endpoints: GET queue, GET session, GET snapshots (presigned URLs), POST acknowle
 
 ---
 
+### FR-4.18: Course Identity on ExamBank
+**Priority:** P1
+
+- FR-4.18.1: `ExamBank` gains two optional columns: `course_code VARCHAR(32)` (e.g. "MATH101") and `course_name TEXT` (e.g. "Calculus I"). Migration 011.
+- FR-4.18.2: `POST /exam/banks` and `PATCH /exam/banks/{id}` accept `course_code` and `course_name` in the request body.
+- FR-4.18.3: `ExamBankResponse` includes `course_code` and `course_name`.
+- FR-4.18.4: Student attempt history (`GET /exam/student/history`) includes `course_code` and `course_name` per attempt row (joined via ExamTest → ExamBank).
+- FR-4.18.5: Teacher submission list (`GET /exam/tests/{id}/submissions`) includes `course_code` and `course_name` per attempt.
+
+**Acceptance Criteria:**
+- AC1: POST bank with course_code="MATH101" → 201, field stored and returned
+- AC2: Student history row includes `course_code` and `course_name` from the bank
+- AC3: Migration 011 applies cleanly; downgrade removes columns
+
+---
+
+### FR-4.19: SchoolClass Archival
+**Priority:** P1
+
+- FR-4.19.1: `SchoolClass` gains `archived_at TIMESTAMPTZ nullable` column. Migration 011.
+- FR-4.19.2: `PATCH /exam/classes/{id}` accepts `archived_at` (or `archive: bool` flag); sets `archived_at = now()` or clears it.
+- FR-4.19.3: `GET /exam/classes` returns all classes including archived; clients use `archived_at IS NOT NULL` to style past classes.
+- FR-4.19.4: Student history rows include `class_archived_at` to allow frontend to collapse archived class groups.
+- FR-4.19.5: Teacher submission list includes `class_archived_at` per attempt.
+
+**Acceptance Criteria:**
+- AC1: PATCH with `archive=true` sets `archived_at`; PATCH with `archive=false` clears it
+- AC2: Archived class still appears in GET /classes response (not hidden)
+- AC3: Student history row includes `class_archived_at` field
+
+---
+
+### FR-4.20: Exam Access Grant
+**Priority:** P1
+
+- FR-4.20.1: New model `ExamAccessGrant` (id, bank_id FK→exam_banks nullable, test_id FK→exam_tests nullable, student_id UUID, granted_by UUID, org_id UUID, granted_at TIMESTAMPTZ, expires_at TIMESTAMPTZ nullable). CHECK(bank_id IS NOT NULL OR test_id IS NOT NULL). Migration 011.
+- FR-4.20.2: `POST /exam/grants` — admin creates a grant; allows a student to access/review a bank exam without class enrollment.
+- FR-4.20.3: `DELETE /exam/grants/{id}` — admin revokes grant.
+- FR-4.20.4: `GET /exam/grants` — admin lists grants for org.
+- FR-4.20.5: `get_attempt_review()` (FR-4.13) checks: student owns attempt AND (test has open/closed assignment for enrolled class OR non-expired grant exists for student on this test or bank).
+
+**Acceptance Criteria:**
+- AC1: POST grant returns 201; student can now call GET /attempts/{id}/review successfully
+- AC2: DELETE grant → student receives 403 on GET /attempts/{id}/review
+- AC3: Non-admin calling POST /exam/grants → 403
+
+---
+
+### FR-4.21: Review Audit Log
+**Priority:** P1
+
+- FR-4.21.1: New model `ReviewAuditLog` (id UUID PK, answer_id FK→dissertation_answers CASCADE, attempt_id UUID denorm index, test_id UUID denorm index, org_id UUID index, actor_id UUID, actor_role TEXT, action TEXT, old_values JSONB nullable, new_values JSONB, occurred_at TIMESTAMPTZ server_default now()). Migration 011.
+- FR-4.21.2: `exam_answer_service.apply_human_score()` — before DB commit captures old `{human_score, human_feedback, ai_score, ai_feedback, status}`; after flush inserts `ReviewAuditLog(action="human_score_applied", old_values=..., new_values=..., actor_id=graded_by, actor_role="teacher")`.
+- FR-4.21.3: `score_complaint_service.resolve_complaint()` — inserts `ReviewAuditLog(action="complaint_resolved", ...)` when score override applied.
+- FR-4.21.4: `GET /exam/tests/{id}/audit-log` — returns `ReviewAuditLog[]` for all answers in the test; teacher/admin only; org-scoped.
+
+**Acceptance Criteria:**
+- AC1: After PATCH /exam/answers/{id}/human-score, a ReviewAuditLog row exists with correct old + new values
+- AC2: GET /exam/tests/{id}/audit-log returns the entry (teacher only; student → 403)
+- AC3: Log is immutable (no update/delete endpoints)
+
+---
+
+### FR-4.22: Teacher Submissions Grouped by Class (Frontend)
+**Priority:** P2
+
+- FR-4.22.1: Page `/exams/[testId]/submissions` — groups submission rows by class (using `class_name` from the TestAssignment matching each attempt's test).
+- FR-4.22.2: Active class sections expanded by default; archived class sections (`class_archived_at IS NOT NULL`) collapsed with an "Archived" badge.
+- FR-4.22.3: Attempts with no class assignment appear in an "Unclassified" section.
+- FR-4.22.4: Each row: student_id (truncated), date, MCQ score, total score, dissertation status counts, validation status badge, "Review →" link.
+- FR-4.22.5: Audit log panel at bottom of page (collapsible) shows `ReviewAuditLog[]` for the test.
+
+---
+
+### FR-4.23: Student Exam History Grouped by Course + Class (Frontend)
+**Priority:** P2
+
+- FR-4.23.1: Page `/students/me/attempts` — grouped by course (course_code + course_name header), then by class (class_name + academic_year sub-header).
+- FR-4.23.2: Active/current class groups expanded; archived classes (`class_archived_at IS NOT NULL`) collapsed with muted/faded styling and "Archived" badge.
+- FR-4.23.3: Attempts without a class assignment appear under "Unclassified" per course, or under a top-level "Other" if also missing course info.
+- FR-4.23.4: Each attempt card: exam title, date, score, Passed/Failed badge, "Review" button. "Review" button visible only when feedback is available per FR-4.13.3.
+- FR-4.23.5: `GET /exam/student/history` response is enriched with `course_code`, `course_name`, `class_id`, `class_name`, `academic_year`, `class_archived_at` per row (FR-4.18.4, FR-4.19.4).
+
+---
+
+### FR-4.24: Anonymous Submission Grading
+**GitHub Issue:** #161  
+**Priority:** P0 (Critical — prevents unconscious bias in dissertation scoring)
+
+- FR-4.24.1: `ExamTest` gains a boolean column `anonymous_grading` (default `False`). Migration 012.
+- FR-4.24.2: `ExamAttempt` gains a `anon_id UUID` column (non-null, server-default `gen_random_uuid()`). Migration 012. Populated on all existing rows by the migration.
+- FR-4.24.3: `POST /exam/banks/{id}/tests` and `PATCH /exam/tests/{id}` accept `anonymous_grading: bool` in the request body.
+- FR-4.24.4: When `test.anonymous_grading=True`, the following endpoints replace `user_id` with `anon_id` in their response payloads and omit any student-identifiable fields (name, email, user_id):
+  - `GET /exam/tests/{id}/submissions` (FR-4.7)
+  - `GET /exam/attempts/{id}/full-review` (FR-4.8)
+  - `GET /exam/tests/{id}/complaints` (FR-4.16.1)
+- FR-4.24.5: `anon_id` is stable — it is assigned at attempt creation and never changes.
+- FR-4.24.6: `GET /exam/tests/{id}/anon-mapping` — teacher/admin only. Returns `[{anon_id: UUID, user_id: UUID}]` for all submitted attempts of the test. Guard: only callable when **all** submitted attempts have `validation_status=validated`; returns 409 `"Scoring not complete — unvalidated attempts remain"` otherwise. This enforces that scoring is fully blind before identity is revealed.
+- FR-4.24.7: `GET /exam/tests/{id}/audit-log` (FR-4.21) uses `anon_id` in place of student-identifying fields when `anonymous_grading=True` and scoring is not yet complete.
+- FR-4.24.8: Score complaint filing by the student (FR-4.15) uses `attempt_id` as the key and is unaffected by anonymisation — the student never sees their own `anon_id`.
+
+**Acceptance Criteria:**
+- AC1: `anonymous_grading=True` on test → submission list shows `anon_id` instead of `user_id`; no student name exposed
+- AC2: The same `anon_id` is returned consistently across all review calls for the same attempt
+- AC3: `GET /exam/tests/{id}/anon-mapping` returns 409 while any submitted attempt is unvalidated
+- AC4: After all submitted attempts are validated → anon-mapping returns the full `[{anon_id, user_id}]` list
+- AC5: `anonymous_grading=False` (default) → all existing behaviour unchanged (backward compat)
+- AC6: Migration 012 populates `anon_id` on all pre-existing `ExamAttempt` rows; downgrade removes the column
+
+---
+
 ## 7. Non-Functional Requirements
 
 ### 5.1 Performance
@@ -679,3 +790,10 @@ Endpoints: GET queue, GET session, GET snapshots (presigned URLs), POST acknowle
 | FR-4.15 | — | US-19 | 4 |
 | FR-4.16 | — | US-19 | 4 |
 | FR-4.17 | — | US-19 | 4 |
+| FR-4.18 | — | US-20, US-21 | 4 |
+| FR-4.19 | — | US-20, US-21 | 4 |
+| FR-4.20 | — | — | 4 |
+| FR-4.21 | — | US-22 | 4 |
+| FR-4.22 | — | US-20 | 4 |
+| FR-4.23 | — | US-21 | 4 |
+| FR-4.24 | #161 | US-23 | 4 |
