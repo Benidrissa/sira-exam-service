@@ -209,10 +209,16 @@ async def get_attempt_full_review(
     """
     attempt = await _get_attempt_with_org_guard(db, attempt_id=attempt_id, org_id=org_id)
 
-    # Load test to check anonymous_grading flag
+    # Load test to check anonymous_grading flag.
+    # _get_attempt_with_org_guard already verified attempt→test→bank chain belongs to org,
+    # so test being None here would be a data-integrity violation — raise rather than leak.
     test = await db.get(ExamTest, attempt.test_id)
-    anonymous = bool(test.anonymous_grading) if test else False
-    display_id = attempt.anon_id if anonymous else attempt.user_id
+    if test is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="ExamTest not found for this attempt — data inconsistency",
+        )
+    display_id = attempt.anon_id if test.anonymous_grading else attempt.user_id
 
     # Load all questions for this attempt
     question_ids = [uuid.UUID(qid) for qid in (attempt.question_ids or [])]

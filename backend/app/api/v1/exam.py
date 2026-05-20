@@ -962,7 +962,7 @@ async def list_test_complaints(
     from app.domain.services.score_complaint_service import list_test_complaints as svc
 
     complaints = await svc(db, test_id=test_id, org_id=_org(user))
-    return [ScoreComplaintResponse(**c) for c in complaints]
+    return [ScoreComplaintResponse.model_validate(c) for c in complaints]
 
 
 @router.patch("/complaints/{complaint_id}", response_model=ScoreComplaintResponse)

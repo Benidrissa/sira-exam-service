@@ -105,13 +105,14 @@ async def test_list_submissions_anonymous_masks_user_id() -> None:
 
     # _get_test_with_org_guard returns test
     db.execute.side_effect = [
-        # 1st call: _get_test_with_org_guard join
-        _scalar(test),
-        # 2nd call: db.get(ExamBank, ...)  — handled via db.get below
-        # 3rd call: ExamAttempt query
-        _scalars([attempt]),
-        # 4th call: TestAssignment query
-        _scalars([]),
+        # Execute call order inside list_test_submissions:
+        #   1. _get_test_with_org_guard (ExamTest join)
+        #   2. select(ExamAttempt) — submitted attempts
+        #   3. select(TestAssignment) — for class resolution
+        # db.get() is called separately for ExamBank (not in side_effect chain)
+        _scalar(test),       # call 1
+        _scalars([attempt]), # call 2
+        _scalars([]),        # call 3 (no assignments)
     ]
     db.get.return_value = bank
 
@@ -119,6 +120,7 @@ async def test_list_submissions_anonymous_masks_user_id() -> None:
         db, test_id=TEST_ID, org_id=ORG_A
     )
 
+    assert db.execute.call_count == 3, "Expected exactly 3 db.execute calls"
     assert len(rows) == 1
     # user_id field should carry the anon_id value, not the real student ID
     assert rows[0]["user_id"] == ANON_A
@@ -143,9 +145,9 @@ async def test_list_submissions_non_anonymous_preserves_user_id() -> None:
     attempt.dissertation_answers = []
 
     db.execute.side_effect = [
-        _scalar(test),
-        _scalars([attempt]),
-        _scalars([]),
+        _scalar(test),       # call 1: _get_test_with_org_guard
+        _scalars([attempt]), # call 2: submitted attempts
+        _scalars([]),        # call 3: TestAssignment (none)
     ]
     db.get.return_value = bank
 
@@ -153,6 +155,7 @@ async def test_list_submissions_non_anonymous_preserves_user_id() -> None:
         db, test_id=TEST_ID, org_id=ORG_A
     )
 
+    assert db.execute.call_count == 3, "Expected exactly 3 db.execute calls"
     assert len(rows) == 1
     assert rows[0]["user_id"] == STUDENT_A
 
