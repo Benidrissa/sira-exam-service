@@ -50,21 +50,15 @@ async def _get_attempt_with_org_guard(
     )
     attempt = result.scalar_one_or_none()
     if attempt is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="ExamAttempt not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="ExamAttempt not found")
     return attempt
 
 
 def _dissertation_counts(
     dissertation_answers: list[DissertationAnswer],
 ) -> dict:
-    pending = sum(
-        1 for a in dissertation_answers if a.status == DissertationStatus.pending
-    )
-    ai_scored = sum(
-        1 for a in dissertation_answers if a.status == DissertationStatus.ai_scored
-    )
+    pending = sum(1 for a in dissertation_answers if a.status == DissertationStatus.pending)
+    ai_scored = sum(1 for a in dissertation_answers if a.status == DissertationStatus.ai_scored)
     human_reviewed = sum(
         1 for a in dissertation_answers if a.status == DissertationStatus.human_reviewed
     )
@@ -177,9 +171,7 @@ async def get_attempt_full_review(
 
     # Load all questions for this attempt
     question_ids = [uuid.UUID(qid) for qid in (attempt.question_ids or [])]
-    q_result = await db.execute(
-        select(ExamQuestion).where(ExamQuestion.id.in_(question_ids))
-    )
+    q_result = await db.execute(select(ExamQuestion).where(ExamQuestion.id.in_(question_ids)))
     questions = {str(q.id): q for q in q_result.scalars().all()}
 
     # Load dissertation answers
@@ -246,9 +238,7 @@ async def validate_attempt(
     )
     dissertation_answers = list(da_result.scalars().all())
     not_reviewed = [
-        str(da.id)
-        for da in dissertation_answers
-        if da.status != DissertationStatus.human_reviewed
+        str(da.id) for da in dissertation_answers if da.status != DissertationStatus.human_reviewed
     ]
     if not_reviewed:
         raise HTTPException(
@@ -306,9 +296,7 @@ async def batch_validate(
             continue
 
         if attempt.mcq_answers is None:
-            errors.append(
-                {"attempt_id": str(attempt_id), "reason": "Attempt not yet submitted"}
-            )
+            errors.append({"attempt_id": str(attempt_id), "reason": "Attempt not yet submitted"})
             continue
 
         if override_score is not None:
@@ -413,9 +401,7 @@ async def get_attempt_review(
     )
     row = result.first()
     if row is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="ExamAttempt not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="ExamAttempt not found")
     attempt, test, _bank = row
 
     if attempt.user_id != user_id:
@@ -432,17 +418,12 @@ async def get_attempt_review(
         )
         assignments = list(asgn_result.scalars().all())
         now = datetime.now(tz=UTC)
-        if any(
-            a.closes_at is not None and a.closes_at.astimezone(UTC) < now
-            for a in assignments
-        ):
+        if any(a.closes_at is not None and a.closes_at.astimezone(UTC) < now for a in assignments):
             feedback_available = True
 
     # Load questions and dissertations
     question_ids = [uuid.UUID(qid) for qid in (attempt.question_ids or [])]
-    q_result = await db.execute(
-        select(ExamQuestion).where(ExamQuestion.id.in_(question_ids))
-    )
+    q_result = await db.execute(select(ExamQuestion).where(ExamQuestion.id.in_(question_ids)))
     questions = {str(q.id): q for q in q_result.scalars().all()}
 
     da_result = await db.execute(

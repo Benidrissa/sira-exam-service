@@ -65,7 +65,7 @@ def ai_correct_dissertation_task(
     self,  # type: ignore[no-untyped-def]
     answer_id: str,
 ) -> dict:
-    return asyncio.get_event_loop().run_until_complete(_grade(answer_id))
+    return asyncio.run(_grade(answer_id))
 
 
 async def _grade(answer_id: str) -> dict:

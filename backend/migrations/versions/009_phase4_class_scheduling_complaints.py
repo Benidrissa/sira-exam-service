@@ -22,7 +22,7 @@ def _create_enum_if_not_exists(name: str, values: list[str]) -> None:
     op.execute(
         f"""
         DO $$ BEGIN
-            CREATE TYPE {_SCHEMA}.{name} AS ENUM ({', '.join(repr(v) for v in values)});
+            CREATE TYPE {_SCHEMA}.{name} AS ENUM ({", ".join(repr(v) for v in values)});
         EXCEPTION WHEN duplicate_object THEN NULL;
         END $$;
         """
@@ -139,7 +139,9 @@ def upgrade() -> None:
         ),
         sa.Column("filed_by", UUID(as_uuid=True), nullable=False),
         sa.Column("reason", sa.Text(), nullable=False),
-        sa.Column("status", sa.Text(), nullable=False, server_default="pending"),  # cast to enum below
+        sa.Column(
+            "status", sa.Text(), nullable=False, server_default="pending"
+        ),  # cast to enum below
         sa.Column("reviewed_by", UUID(as_uuid=True), nullable=True),
         sa.Column("review_note", sa.Text(), nullable=True),
         sa.Column("score_override", sa.Float(), nullable=True),
@@ -166,9 +168,7 @@ def upgrade() -> None:
     op.create_index(
         "ix_score_complaints_attempt_id", "score_complaints", ["attempt_id"], schema=_SCHEMA
     )
-    op.create_index(
-        "ix_score_complaints_status", "score_complaints", ["status"], schema=_SCHEMA
-    )
+    op.create_index("ix_score_complaints_status", "score_complaints", ["status"], schema=_SCHEMA)
     # Partial unique index: one total-score complaint (question_id IS NULL) per attempt
     op.execute(
         f"CREATE UNIQUE INDEX uq_complaint_total "
