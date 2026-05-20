@@ -8,6 +8,7 @@ celery_app = Celery(
     broker=settings.redis_url,
     backend=settings.redis_url,
     include=[
+        "app.tasks.dissertation_grading",
         "app.tasks.extraction",
         "app.tasks.generation",
         "app.tasks.proctor_tasks",

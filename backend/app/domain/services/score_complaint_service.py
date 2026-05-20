@@ -41,9 +41,7 @@ async def _get_attempt_with_user_guard(
     )
     attempt = result.scalar_one_or_none()
     if attempt is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="ExamAttempt not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="ExamAttempt not found")
     if attempt.user_id != user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
     return attempt
@@ -117,9 +115,7 @@ async def list_attempt_complaints(
 
     Guard: attempt.user_id == user_id (403).
     """
-    await _get_attempt_with_user_guard(
-        db, attempt_id=attempt_id, user_id=user_id, org_id=org_id
-    )
+    await _get_attempt_with_user_guard(db, attempt_id=attempt_id, user_id=user_id, org_id=org_id)
 
     result = await db.execute(
         select(ScoreComplaint)

@@ -15,7 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
-import { CheckCircle2, Clock, FileText, Home, Info, Award, User, Save } from "lucide-react";
+import { CheckCircle2, Clock, FileText, Home, Info, Award, User, Save, Pencil, X } from "lucide-react";
 
 // ─── Role detection (same as NavBar) ────────────────────────────────────────
 function getRoleFromCookie(): string | null {
@@ -105,15 +105,31 @@ function GradingCard({
     answer.human_score != null ? String(answer.human_score) : "",
   );
   const [humanFeedback, setHumanFeedback] = useState(answer.human_feedback ?? "");
+  const [aiScoreOverride, setAiScoreOverride] = useState(
+    answer.ai_score != null ? String(answer.ai_score) : "",
+  );
+  const [aiFeedbackOverride, setAiFeedbackOverride] = useState(answer.ai_feedback ?? "");
+  const [isEditing, setIsEditing] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
+  const buildPayload = () => {
+    const payload: Parameters<typeof patchHumanScore>[1] = {
+      human_score: Number(humanScore),
+      human_feedback: humanFeedback,
+    };
+    const parsedAiScore = aiScoreOverride !== "" ? Number(aiScoreOverride) : null;
+    if (parsedAiScore !== null && parsedAiScore !== answer.ai_score) {
+      payload.ai_score_override = parsedAiScore;
+    }
+    if (aiFeedbackOverride !== answer.ai_feedback) {
+      payload.ai_feedback_override = aiFeedbackOverride;
+    }
+    return payload;
+  };
+
   const mutation = useMutation({
-    mutationFn: () =>
-      patchHumanScore(answer.id, {
-        human_score: Number(humanScore),
-        human_feedback: humanFeedback,
-      }),
-    onSuccess: (updated) => { onUpdated(updated); setSaveError(null); },
+    mutationFn: () => patchHumanScore(answer.id, buildPayload()),
+    onSuccess: (updated) => { onUpdated(updated); setSaveError(null); setIsEditing(false); },
     onError: (e) => setSaveError(String(e)),
   });
 
@@ -182,12 +198,20 @@ function GradingCard({
         <Separator />
 
         {/* Human override */}
-        {answer.status === "human_reviewed" ? (
+        {answer.status === "human_reviewed" && !isEditing ? (
           <div className="space-y-2">
             <div className="flex items-center gap-2">
               <CheckCircle2 className="h-4 w-4 text-emerald-500" />
               <span className="text-sm font-medium">Final score: {answer.human_score} / 100</span>
               <Badge variant="success">Human Reviewed</Badge>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="ml-auto h-7 px-2 text-xs"
+                onClick={() => setIsEditing(true)}
+              >
+                <Pencil className="mr-1 h-3 w-3" /> Edit Override
+              </Button>
             </div>
             {answer.human_feedback && (
               <p className="text-sm text-muted-foreground italic">{answer.human_feedback}</p>
@@ -216,13 +240,40 @@ function GradingCard({
               value={humanFeedback}
               onChange={(e) => setHumanFeedback(e.target.value)}
             />
+
+            <Separator />
+
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                Override AI Assessment (optional)
+              </p>
+              <div className="flex items-center gap-3">
+                <Label htmlFor={`ai-score-${answer.id}`} className="text-sm shrink-0">
+                  AI Score (0–100)
+                </Label>
+                <Input
+                  id={`ai-score-${answer.id}`}
+                  type="number" min={0} max={100} step={0.5}
+                  className="w-28"
+                  value={aiScoreOverride}
+                  onChange={(e) => setAiScoreOverride(e.target.value)}
+                />
+              </div>
+              <Textarea
+                placeholder="Override AI comment…"
+                rows={4}
+                value={aiFeedbackOverride}
+                onChange={(e) => setAiFeedbackOverride(e.target.value)}
+              />
+            </div>
+
             {saveError && <p className="text-xs text-destructive">{saveError}</p>}
           </div>
         )}
       </CardContent>
 
-      {answer.status !== "human_reviewed" && (
-        <CardFooter>
+      {(answer.status !== "human_reviewed" || isEditing) && (
+        <CardFooter className="gap-2">
           <Button
             size="sm"
             disabled={!humanScore || mutation.isPending}
@@ -231,6 +282,16 @@ function GradingCard({
             {mutation.isPending ? <LoadingSpinner className="mr-2 h-4 w-4" /> : <Save className="mr-2 h-4 w-4" />}
             Save & Release
           </Button>
+          {isEditing && (
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={mutation.isPending}
+              onClick={() => { setIsEditing(false); setSaveError(null); }}
+            >
+              <X className="mr-1 h-3 w-3" /> Cancel
+            </Button>
+          )}
         </CardFooter>
       )}
     </Card>

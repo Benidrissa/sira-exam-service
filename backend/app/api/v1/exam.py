@@ -677,6 +677,8 @@ async def apply_human_score(
         graded_by=uuid.UUID(user.user_id),
         human_score=data.human_score,
         human_feedback=data.human_feedback,
+        ai_score_override=data.ai_score_override,
+        ai_feedback_override=data.ai_feedback_override,
     )
     return DissertationAnswerResponse.model_validate(answer)
 
@@ -748,9 +750,7 @@ async def validate_attempt(
     """Mark attempt as teacher-validated (FR-4.9)."""
     from app.domain.services.exam_submission_service import validate_attempt as svc
 
-    attempt = await svc(
-        db, attempt_id=attempt_id, org_id=_org(user), validated_by=_uid(user)
-    )
+    attempt = await svc(db, attempt_id=attempt_id, org_id=_org(user), validated_by=_uid(user))
     return {
         "attempt_id": str(attempt.id),
         "validation_status": attempt.validation_status,
@@ -861,9 +861,7 @@ async def list_attempt_complaints(
     """List all complaints filed by the student for an attempt (FR-4.15)."""
     from app.domain.services.score_complaint_service import list_attempt_complaints as svc
 
-    complaints = await svc(
-        db, attempt_id=attempt_id, user_id=_uid(user), org_id=_org(user)
-    )
+    complaints = await svc(db, attempt_id=attempt_id, user_id=_uid(user), org_id=_org(user))
     return [ScoreComplaintResponse.model_validate(c) for c in complaints]
 
 

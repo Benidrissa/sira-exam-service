@@ -190,7 +190,12 @@ export const getDissertationReview = (testId: string) =>
 
 export const patchHumanScore = (
   answerId: string,
-  data: { human_score: number; human_feedback: string },
+  data: {
+    human_score: number;
+    human_feedback: string;
+    ai_score_override?: number;
+    ai_feedback_override?: string;
+  },
 ) =>
   apiFetch<DissertationAnswer>(`/exam/answers/${answerId}/human-score`, {
     method: "PATCH",
