@@ -193,6 +193,7 @@ class ExamTestCreate(BaseModel):
     show_feedback: bool = False
     mcq_weight: float = Field(1.0, ge=0.0)
     dissertation_weight: float = Field(1.0, ge=0.0)
+    anonymous_grading: bool = False
 
 
 class ExamTestUpdate(BaseModel):
@@ -205,6 +206,7 @@ class ExamTestUpdate(BaseModel):
     mcq_weight: float | None = Field(None, ge=0.0)
     dissertation_weight: float | None = Field(None, ge=0.0)
     status: TestStatus | None = None
+    anonymous_grading: bool | None = None
 
 
 class ExamTestResponse(BaseModel):
@@ -222,6 +224,7 @@ class ExamTestResponse(BaseModel):
     mcq_weight: float
     dissertation_weight: float
     status: TestStatus
+    anonymous_grading: bool
     created_at: datetime
     updated_at: datetime
 
@@ -629,3 +632,18 @@ class ReviewAuditLogEntry(BaseModel):
     old_values: dict | None
     new_values: dict
     occurred_at: datetime
+
+
+# ---------------------------------------------------------------------------
+# FR-4.24 — Anonymous grading de-anonymisation mapping
+# ---------------------------------------------------------------------------
+
+
+class AnonMappingItem(BaseModel):
+    anon_id: uuid.UUID
+    user_id: uuid.UUID
+
+
+class AnonMappingResponse(BaseModel):
+    test_id: uuid.UUID
+    mappings: list[AnonMappingItem]

@@ -115,6 +115,7 @@ async def start_attempt(
     attempt = ExamAttempt(
         test_id=test_id,
         user_id=user_id,
+        anon_id=uuid.uuid4(),
         question_ids=[str(qid) for qid in question_ids],
     )
     db.add(attempt)

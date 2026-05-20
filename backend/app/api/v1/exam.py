@@ -20,6 +20,7 @@ from app.domain.services import (
 )
 from app.infrastructure.storage import get_exam_storage
 from app.schemas.exam import (
+    AnonMappingResponse,
     AttemptFullReviewResponse,
     AttemptReviewResponse,
     AttemptSubmissionSummary,
@@ -879,6 +880,28 @@ async def list_access_grants(
 
 
 # ---------------------------------------------------------------------------
+# FR-4.24: Anonymous grading — de-anonymisation mapping
+# ---------------------------------------------------------------------------
+
+
+@router.get("/tests/{test_id}/anon-mapping", response_model=AnonMappingResponse)
+async def get_anon_mapping(
+    test_id: uuid.UUID,
+    db: DB,
+    user: TeacherUser,
+) -> AnonMappingResponse:
+    """Reveal anon_id → user_id mapping once all attempts are validated (FR-4.24)."""
+    from app.domain.services.exam_submission_service import get_anon_mapping as svc
+    from app.schemas.exam import AnonMappingItem
+
+    mappings = await svc(db, test_id=test_id, org_id=_org(user))
+    return AnonMappingResponse(
+        test_id=test_id,
+        mappings=[AnonMappingItem(**m) for m in mappings],
+    )
+
+
+# ---------------------------------------------------------------------------
 # FR-4.15: File complaint + list attempt complaints (student)
 # ---------------------------------------------------------------------------
 
@@ -939,7 +962,7 @@ async def list_test_complaints(
     from app.domain.services.score_complaint_service import list_test_complaints as svc
 
     complaints = await svc(db, test_id=test_id, org_id=_org(user))
-    return [ScoreComplaintResponse.model_validate(c) for c in complaints]
+    return [ScoreComplaintResponse(**c) for c in complaints]
 
 
 @router.patch("/complaints/{complaint_id}", response_model=ScoreComplaintResponse)
