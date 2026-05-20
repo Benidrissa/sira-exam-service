@@ -136,27 +136,48 @@ async def list_test_complaints(
     *,
     test_id: uuid.UUID,
     org_id: uuid.UUID,
-) -> list[ScoreComplaint]:
+) -> list[dict]:
     """All complaints for a test (teacher view).
 
+    When test.anonymous_grading=True, filed_by is replaced with attempt.anon_id.
     Joins: ScoreComplaint → ExamAttempt → ExamTest → ExamBank (org check).
     """
-    # Verify test belongs to this org
+    # Verify test belongs to this org and load the flag
     test_result = await db.execute(
         select(ExamTest)
         .join(ExamBank, ExamTest.bank_id == ExamBank.id)
         .where(ExamTest.id == test_id, ExamBank.org_id == org_id)
     )
-    if test_result.scalar_one_or_none() is None:
+    test = test_result.scalar_one_or_none()
+    if test is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="ExamTest not found")
 
+    anonymous = bool(test.anonymous_grading)
+
     result = await db.execute(
-        select(ScoreComplaint)
+        select(ScoreComplaint, ExamAttempt.anon_id)
         .join(ExamAttempt, ScoreComplaint.attempt_id == ExamAttempt.id)
         .where(ExamAttempt.test_id == test_id)
         .order_by(ScoreComplaint.created_at.desc())
     )
-    return list(result.scalars().all())
+    rows = result.all()
+
+    return [
+        {
+            "id": c.id,
+            "attempt_id": c.attempt_id,
+            "question_id": c.question_id,
+            "filed_by": anon_id if anonymous else c.filed_by,
+            "reason": c.reason,
+            "status": c.status,
+            "reviewed_by": c.reviewed_by,
+            "review_note": c.review_note,
+            "score_override": c.score_override,
+            "reviewed_at": c.reviewed_at,
+            "created_at": c.created_at,
+        }
+        for c, anon_id in rows
+    ]
 
 
 # ---------------------------------------------------------------------------

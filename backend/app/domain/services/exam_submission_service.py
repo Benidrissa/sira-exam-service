@@ -170,10 +170,11 @@ async def list_test_submissions(
                 class_archived_at = asgn.school_class.archived_at
                 break
 
+        display_id = attempt.anon_id if test.anonymous_grading else attempt.user_id
         summaries.append(
             {
                 "attempt_id": attempt.id,
-                "user_id": attempt.user_id,
+                "user_id": display_id,
                 "attempted_at": attempt.attempted_at,
                 "time_taken_sec": attempt.time_taken_sec,
                 "mcq_score": attempt.mcq_score,
@@ -208,6 +209,17 @@ async def get_attempt_full_review(
     """
     attempt = await _get_attempt_with_org_guard(db, attempt_id=attempt_id, org_id=org_id)
 
+    # Load test to check anonymous_grading flag.
+    # _get_attempt_with_org_guard already verified attempt→test→bank chain belongs to org,
+    # so test being None here would be a data-integrity violation — raise rather than leak.
+    test = await db.get(ExamTest, attempt.test_id)
+    if test is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="ExamTest not found for this attempt — data inconsistency",
+        )
+    display_id = attempt.anon_id if test.anonymous_grading else attempt.user_id
+
     # Load all questions for this attempt
     question_ids = [uuid.UUID(qid) for qid in (attempt.question_ids or [])]
     q_result = await db.execute(select(ExamQuestion).where(ExamQuestion.id.in_(question_ids)))
@@ -237,7 +249,7 @@ async def get_attempt_full_review(
     return {
         "attempt_id": attempt.id,
         "test_id": attempt.test_id,
-        "user_id": attempt.user_id,
+        "user_id": display_id,
         "attempted_at": attempt.attempted_at,
         "mcq_score": attempt.mcq_score,
         "total_score": attempt.total_score,
@@ -638,3 +650,50 @@ async def list_access_grants(
         .order_by(ExamAccessGrant.granted_at.desc())
     )
     return list(result.scalars().all())
+
+
+# ---------------------------------------------------------------------------
+# FR-4.24: Anonymous grading — de-anonymisation mapping
+# ---------------------------------------------------------------------------
+
+
+async def get_anon_mapping(
+    db: AsyncSession,
+    *,
+    test_id: uuid.UUID,
+    org_id: uuid.UUID,
+) -> list[dict]:
+    """Return [{anon_id, user_id}] for all submitted attempts.
+
+    Guard (409): all submitted attempts must have validation_status=validated.
+    Guard (404): test.anonymous_grading must be True.
+    """
+    from sqlalchemy import func as sqlfunc
+
+    test = await _get_test_with_org_guard(db, test_id=test_id, org_id=org_id)
+    if not test.anonymous_grading:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Anonymous grading is not enabled for this test",
+        )
+
+    unvalidated_count = await db.scalar(
+        select(sqlfunc.count(ExamAttempt.id)).where(
+            ExamAttempt.test_id == test_id,
+            ExamAttempt.mcq_answers.isnot(None),
+            ExamAttempt.validation_status != "validated",
+        )
+    )
+    if unvalidated_count:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Scoring not complete — {unvalidated_count} unvalidated attempt(s) remain",
+        )
+
+    result = await db.execute(
+        select(ExamAttempt.anon_id, ExamAttempt.user_id).where(
+            ExamAttempt.test_id == test_id,
+            ExamAttempt.mcq_answers.isnot(None),
+        )
+    )
+    return [{"anon_id": row.anon_id, "user_id": row.user_id} for row in result.all()]

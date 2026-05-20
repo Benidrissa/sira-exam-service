@@ -20,6 +20,7 @@ from app.domain.services import (
 )
 from app.infrastructure.storage import get_exam_storage
 from app.schemas.exam import (
+    AnonMappingResponse,
     AttemptFullReviewResponse,
     AttemptReviewResponse,
     AttemptSubmissionSummary,
@@ -876,6 +877,28 @@ async def list_access_grants(
 
     grants = await svc(db, org_id=_org(user))
     return [ExamAccessGrantResponse.model_validate(g) for g in grants]
+
+
+# ---------------------------------------------------------------------------
+# FR-4.24: Anonymous grading — de-anonymisation mapping
+# ---------------------------------------------------------------------------
+
+
+@router.get("/tests/{test_id}/anon-mapping", response_model=AnonMappingResponse)
+async def get_anon_mapping(
+    test_id: uuid.UUID,
+    db: DB,
+    user: TeacherUser,
+) -> AnonMappingResponse:
+    """Reveal anon_id → user_id mapping once all attempts are validated (FR-4.24)."""
+    from app.domain.services.exam_submission_service import get_anon_mapping as svc
+    from app.schemas.exam import AnonMappingItem
+
+    mappings = await svc(db, test_id=test_id, org_id=_org(user))
+    return AnonMappingResponse(
+        test_id=test_id,
+        mappings=[AnonMappingItem(**m) for m in mappings],
+    )
 
 
 # ---------------------------------------------------------------------------
