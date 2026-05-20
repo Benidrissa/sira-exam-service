@@ -319,15 +319,15 @@ async def regenerate_scenario(
 # ---------------------------------------------------------------------------
 
 
-def _org(user: TeacherUser) -> uuid.UUID:
+def _org(user: AuthenticatedUser) -> uuid.UUID:
     return uuid.UUID(user.org_id) if user.org_id else uuid.UUID(int=0)
 
 
-def _uid(user: TeacherUser) -> uuid.UUID:
+def _uid(user: AuthenticatedUser) -> uuid.UUID:
     return uuid.UUID(user.user_id)
 
 
-def _is_admin(user: TeacherUser) -> bool:
+def _is_admin(user: AuthenticatedUser) -> bool:
     return bool(user.is_admin)
 
 
@@ -687,18 +687,6 @@ async def apply_human_score(
 
 
 # ---------------------------------------------------------------------------
-# Phase 4 helpers
-# ---------------------------------------------------------------------------
-
-
-def _org(user: AuthenticatedUser) -> uuid.UUID:
-    return uuid.UUID(user.org_id) if user.org_id else uuid.UUID(int=0)
-
-
-def _uid(user: AuthenticatedUser) -> uuid.UUID:
-    return uuid.UUID(user.user_id)
-
-
 # ---------------------------------------------------------------------------
 # FR-4.7: Teacher submission list
 # ---------------------------------------------------------------------------

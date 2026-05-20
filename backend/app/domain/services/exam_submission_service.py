@@ -153,16 +153,22 @@ async def list_test_submissions(
     for attempt in attempts:
         counts = _dissertation_counts(attempt.dissertation_answers)
 
-        # Find the class for this attempt: pick the assignment whose class includes the student
-        # (simplified: use first/most-recent assignment class for the test)
+        # Find the class for this specific attempt's student via ClassMember
         class_id: uuid.UUID | None = None
         class_name: str | None = None
         class_archived_at: datetime | None = None
-        if assignments:
-            asgn = assignments[0]
-            class_id = asgn.class_id
-            class_name = asgn.school_class.name
-            class_archived_at = asgn.school_class.archived_at
+        for asgn in assignments:
+            member_result = await db.execute(
+                select(ClassMember).where(
+                    ClassMember.class_id == asgn.class_id,
+                    ClassMember.user_id == attempt.user_id,
+                )
+            )
+            if member_result.scalar_one_or_none() is not None:
+                class_id = asgn.class_id
+                class_name = asgn.school_class.name
+                class_archived_at = asgn.school_class.archived_at
+                break
 
         summaries.append(
             {
@@ -425,22 +431,25 @@ async def list_student_history(
             if not review_allowed and asgn.closes_at.astimezone(UTC) < now:
                 review_allowed = True
 
-        # Check access grant if still not allowed
+        # Check access grant if still not allowed — filter expiry at DB level
         if not review_allowed:
+            from sqlalchemy import or_
+
             grant_result = await db.execute(
                 select(ExamAccessGrant).where(
                     ExamAccessGrant.student_id == user_id,
                     ExamAccessGrant.org_id == org_id,
-                    (
-                        (ExamAccessGrant.test_id == attempt.test_id)
-                        | (ExamAccessGrant.bank_id == test.bank_id)
+                    or_(
+                        ExamAccessGrant.test_id == attempt.test_id,
+                        ExamAccessGrant.bank_id == test.bank_id,
+                    ),
+                    or_(
+                        ExamAccessGrant.expires_at.is_(None),
+                        ExamAccessGrant.expires_at > now,
                     ),
                 )
             )
-            grant = grant_result.scalar_one_or_none()
-            if grant is not None and (
-                grant.expires_at is None or grant.expires_at.astimezone(UTC) > now
-            ):
+            if grant_result.first() is not None:
                 review_allowed = True
 
         items.append(

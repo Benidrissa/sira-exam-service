@@ -17,6 +17,7 @@ from app.domain.models.exam import (
     ExamAttempt,
     ExamBank,
     ExamTest,
+    ReviewAuditLog,
     ScoreComplaint,
 )
 
@@ -252,6 +253,42 @@ async def resolve_complaint(
     complaint.review_note = review_note
     complaint.score_override = score_override
     complaint.reviewed_at = datetime.now(tz=UTC)
+
+    # Write audit log when a score override is applied (FR-4.21.3)
+    if status == ComplaintStatus.approved and score_override is not None:
+        attempt_for_audit = await db.get(ExamAttempt, complaint.attempt_id)
+        if attempt_for_audit is not None:
+            # Load org_id via bank
+            test_for_audit = await db.get(ExamTest, attempt_for_audit.test_id)
+            bank_for_audit = (
+                await db.get(ExamBank, test_for_audit.bank_id) if test_for_audit else None
+            )
+            if bank_for_audit is not None and complaint.question_id is not None:
+                    # Dissertation-level override: record against the DissertationAnswer
+                    da_result = await db.execute(
+                        select(DissertationAnswer).where(
+                            DissertationAnswer.attempt_id == complaint.attempt_id,
+                            DissertationAnswer.question_id == complaint.question_id,
+                        )
+                    )
+                    da_for_audit = da_result.scalar_one_or_none()
+                    if da_for_audit is not None:
+                        audit_entry = ReviewAuditLog(
+                            answer_id=da_for_audit.id,
+                            attempt_id=complaint.attempt_id,
+                            test_id=attempt_for_audit.test_id,
+                            org_id=bank_for_audit.org_id,
+                            actor_id=resolved_by,
+                            actor_role="teacher",
+                            action="complaint_resolved",
+                            old_values={"human_score": da_for_audit.human_score},
+                            new_values={
+                                "human_score": score_override,
+                                "complaint_id": str(complaint.id),
+                                "review_note": review_note,
+                            },
+                        )
+                        db.add(audit_entry)
 
     await db.commit()
     await db.refresh(complaint)

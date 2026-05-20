@@ -122,6 +122,11 @@ async def apply_human_score(
         select(ExamAttempt).where(ExamAttempt.id == answer.attempt_id)
     )
     attempt = attempt_result.scalar_one_or_none()
+    if attempt is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="ExamAttempt not found for this answer — data inconsistency",
+        )
 
     new_values: dict = {
         "human_score": answer.human_score,
@@ -134,7 +139,7 @@ async def apply_human_score(
     audit_entry = ReviewAuditLog(
         answer_id=answer_id,
         attempt_id=answer.attempt_id,
-        test_id=attempt.test_id if attempt else uuid.UUID(int=0),
+        test_id=attempt.test_id,
         org_id=org_id,
         actor_id=graded_by,
         actor_role="teacher",
