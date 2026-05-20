@@ -16,6 +16,8 @@ export interface ExamBank {
   status: BankStatus;
   generation_task_id: string | null;
   generation_error: string | null;
+  course_code: string | null;
+  course_name: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -255,6 +257,7 @@ export interface SchoolClass {
   academic_year: string;
   created_by: string;
   created_at: string;
+  archived_at: string | null;
 }
 
 export interface ClassMember {
@@ -305,6 +308,11 @@ export interface AttemptSubmissionSummary {
   pending_count: number;
   ai_scored_count: number;
   human_reviewed_count: number;
+  class_id: string | null;
+  class_name: string | null;
+  class_archived_at: string | null;
+  course_code: string | null;
+  course_name: string | null;
 }
 
 export interface ReviewQuestionAnswer {
@@ -356,6 +364,37 @@ export interface StudentAttemptHistoryItem {
   total_score: number | null;
   passed: boolean | null;
   validation_status: ValidationStatus;
+  class_id: string | null;
+  class_name: string | null;
+  academic_year: string | null;
+  class_archived_at: string | null;
+  course_code: string | null;
+  course_name: string | null;
+  review_allowed: boolean;
+}
+
+export interface ExamAccessGrant {
+  id: string;
+  bank_id: string | null;
+  test_id: string | null;
+  student_id: string;
+  granted_by: string;
+  org_id: string;
+  granted_at: string;
+  expires_at: string | null;
+}
+
+export interface ReviewAuditLogEntry {
+  id: string;
+  answer_id: string;
+  attempt_id: string;
+  test_id: string;
+  actor_id: string;
+  actor_role: string;
+  action: string;
+  old_values: Record<string, unknown> | null;
+  new_values: Record<string, unknown>;
+  occurred_at: string;
 }
 
 export interface BatchValidateResponse {

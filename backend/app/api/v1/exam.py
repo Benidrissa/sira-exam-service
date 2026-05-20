@@ -7,7 +7,7 @@ import uuid
 from celery.result import AsyncResult
 from fastapi import APIRouter, File, HTTPException, UploadFile, status
 
-from app.api.deps import DB, CurrentUser, TeacherUser
+from app.api.deps import DB, AdminUser, CurrentUser, TeacherUser
 from app.core.auth import AuthenticatedUser
 from app.domain.models.exam import BankStatus
 from app.domain.services import (
@@ -20,6 +20,7 @@ from app.domain.services import (
 )
 from app.infrastructure.storage import get_exam_storage
 from app.schemas.exam import (
+    AnonMappingResponse,
     AttemptFullReviewResponse,
     AttemptReviewResponse,
     AttemptSubmissionSummary,
@@ -29,6 +30,8 @@ from app.schemas.exam import (
     ComplaintCreate,
     ComplaintResolve,
     DissertationAnswerResponse,
+    ExamAccessGrantCreate,
+    ExamAccessGrantResponse,
     ExamAttemptResponse,
     ExamBankCreate,
     ExamBankResponse,
@@ -48,6 +51,7 @@ from app.schemas.exam import (
     GenerationStatusResponse,
     HumanScoreUpdate,
     RegenerateRequest,
+    ReviewAuditLogEntry,
     ScoreComplaintResponse,
     StartAttemptResponse,
     StudentAttemptHistoryItem,
@@ -316,15 +320,15 @@ async def regenerate_scenario(
 # ---------------------------------------------------------------------------
 
 
-def _org(user: TeacherUser) -> uuid.UUID:
+def _org(user: AuthenticatedUser) -> uuid.UUID:
     return uuid.UUID(user.org_id) if user.org_id else uuid.UUID(int=0)
 
 
-def _uid(user: TeacherUser) -> uuid.UUID:
+def _uid(user: AuthenticatedUser) -> uuid.UUID:
     return uuid.UUID(user.user_id)
 
 
-def _is_admin(user: TeacherUser) -> bool:
+def _is_admin(user: AuthenticatedUser) -> bool:
     return bool(user.is_admin)
 
 
@@ -677,23 +681,13 @@ async def apply_human_score(
         graded_by=uuid.UUID(user.user_id),
         human_score=data.human_score,
         human_feedback=data.human_feedback,
+        ai_score_override=data.ai_score_override,
+        ai_feedback_override=data.ai_feedback_override,
     )
     return DissertationAnswerResponse.model_validate(answer)
 
 
 # ---------------------------------------------------------------------------
-# Phase 4 helpers
-# ---------------------------------------------------------------------------
-
-
-def _org(user: AuthenticatedUser) -> uuid.UUID:
-    return uuid.UUID(user.org_id) if user.org_id else uuid.UUID(int=0)
-
-
-def _uid(user: AuthenticatedUser) -> uuid.UUID:
-    return uuid.UUID(user.user_id)
-
-
 # ---------------------------------------------------------------------------
 # FR-4.7: Teacher submission list
 # ---------------------------------------------------------------------------
@@ -748,9 +742,7 @@ async def validate_attempt(
     """Mark attempt as teacher-validated (FR-4.9)."""
     from app.domain.services.exam_submission_service import validate_attempt as svc
 
-    attempt = await svc(
-        db, attempt_id=attempt_id, org_id=_org(user), validated_by=_uid(user)
-    )
+    attempt = await svc(db, attempt_id=attempt_id, org_id=_org(user), validated_by=_uid(user))
     return {
         "attempt_id": str(attempt.id),
         "validation_status": attempt.validation_status,
@@ -820,6 +812,96 @@ async def get_attempt_review(
 
 
 # ---------------------------------------------------------------------------
+# FR-4.21: Review audit log
+# ---------------------------------------------------------------------------
+
+
+@router.get("/tests/{test_id}/audit-log", response_model=list[ReviewAuditLogEntry])
+async def list_test_audit_log(
+    test_id: uuid.UUID,
+    db: DB,
+    user: TeacherUser,
+) -> list[ReviewAuditLogEntry]:
+    """List all review audit log entries for a test, newest first (FR-4.21)."""
+    from app.domain.services.exam_submission_service import list_audit_logs as svc
+
+    entries = await svc(db, test_id=test_id, org_id=_org(user))
+    return [ReviewAuditLogEntry.model_validate(e) for e in entries]
+
+
+# ---------------------------------------------------------------------------
+# FR-4.20: Exam access grants (admin only)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/grants", response_model=ExamAccessGrantResponse, status_code=status.HTTP_201_CREATED)
+async def create_access_grant(
+    data: ExamAccessGrantCreate,
+    db: DB,
+    user: AdminUser,
+) -> ExamAccessGrantResponse:
+    """Grant a student review access to an exam without class enrollment (FR-4.20)."""
+    from app.domain.services.exam_submission_service import create_access_grant as svc
+
+    grant = await svc(
+        db,
+        org_id=_org(user),
+        granted_by=_uid(user),
+        student_id=data.student_id,
+        bank_id=data.bank_id,
+        test_id=data.test_id,
+        expires_at=data.expires_at,
+    )
+    return ExamAccessGrantResponse.model_validate(grant)
+
+
+@router.delete("/grants/{grant_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def revoke_access_grant(
+    grant_id: uuid.UUID,
+    db: DB,
+    user: AdminUser,
+) -> None:
+    """Revoke an exam access grant (FR-4.20)."""
+    from app.domain.services.exam_submission_service import revoke_access_grant as svc
+
+    await svc(db, grant_id=grant_id, org_id=_org(user))
+
+
+@router.get("/grants", response_model=list[ExamAccessGrantResponse])
+async def list_access_grants(
+    db: DB,
+    user: AdminUser,
+) -> list[ExamAccessGrantResponse]:
+    """List all access grants for the org (FR-4.20)."""
+    from app.domain.services.exam_submission_service import list_access_grants as svc
+
+    grants = await svc(db, org_id=_org(user))
+    return [ExamAccessGrantResponse.model_validate(g) for g in grants]
+
+
+# ---------------------------------------------------------------------------
+# FR-4.24: Anonymous grading — de-anonymisation mapping
+# ---------------------------------------------------------------------------
+
+
+@router.get("/tests/{test_id}/anon-mapping", response_model=AnonMappingResponse)
+async def get_anon_mapping(
+    test_id: uuid.UUID,
+    db: DB,
+    user: TeacherUser,
+) -> AnonMappingResponse:
+    """Reveal anon_id → user_id mapping once all attempts are validated (FR-4.24)."""
+    from app.domain.services.exam_submission_service import get_anon_mapping as svc
+    from app.schemas.exam import AnonMappingItem
+
+    mappings = await svc(db, test_id=test_id, org_id=_org(user))
+    return AnonMappingResponse(
+        test_id=test_id,
+        mappings=[AnonMappingItem(**m) for m in mappings],
+    )
+
+
+# ---------------------------------------------------------------------------
 # FR-4.15: File complaint + list attempt complaints (student)
 # ---------------------------------------------------------------------------
 
@@ -861,9 +943,7 @@ async def list_attempt_complaints(
     """List all complaints filed by the student for an attempt (FR-4.15)."""
     from app.domain.services.score_complaint_service import list_attempt_complaints as svc
 
-    complaints = await svc(
-        db, attempt_id=attempt_id, user_id=_uid(user), org_id=_org(user)
-    )
+    complaints = await svc(db, attempt_id=attempt_id, user_id=_uid(user), org_id=_org(user))
     return [ScoreComplaintResponse.model_validate(c) for c in complaints]
 
 

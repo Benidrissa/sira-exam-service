@@ -88,6 +88,7 @@ async def get_school_class(
     school_class = result.scalar_one_or_none()
     if school_class is None:
         from fastapi import HTTPException
+
         raise HTTPException(status_code=404, detail="SchoolClass not found")
     return SchoolClassDetailResponse.model_validate(school_class)
 
@@ -106,6 +107,7 @@ async def update_school_class(
         org_id=_org(user),
         name=data.name,
         academic_year=data.academic_year,
+        archive=data.archive,
     )
     return SchoolClassResponse.model_validate(school_class)
 

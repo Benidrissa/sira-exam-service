@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import random
 import uuid
-from datetime import UTC, datetime as dt
+from datetime import UTC
+from datetime import datetime as dt
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
@@ -20,7 +21,6 @@ from app.domain.models.exam import (
     ExamQuestion,
     ExamTest,
     QuestionType,
-    TestAssignment,
     TestStatus,
 )
 
@@ -62,7 +62,9 @@ async def start_attempt(
             None,
         )
         if valid_assignment is None:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Test window not open")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail="Test window not open"
+            )
         enrolled = await db.scalar(
             select(ClassMember).where(
                 ClassMember.class_id == valid_assignment.class_id,
@@ -113,6 +115,7 @@ async def start_attempt(
     attempt = ExamAttempt(
         test_id=test_id,
         user_id=user_id,
+        anon_id=uuid.uuid4(),
         question_ids=[str(qid) for qid in question_ids],
     )
     db.add(attempt)

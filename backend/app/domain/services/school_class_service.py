@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime as dt
+from datetime import UTC
+from datetime import datetime as dt
 
 from fastapi import HTTPException, status
 from sqlalchemy import func, select
@@ -21,7 +22,6 @@ from app.domain.models.exam import (
     TestAssignment,
     TestStatus,
 )
-
 
 # ---------------------------------------------------------------------------
 # SchoolClass CRUD
@@ -91,12 +91,17 @@ async def update_class(
     org_id: uuid.UUID,
     name: str | None = None,
     academic_year: str | None = None,
+    archive: bool | None = None,
 ) -> SchoolClass:
     school_class = await get_class(db, class_id=class_id, org_id=org_id)
     if name is not None:
         school_class.name = name
     if academic_year is not None:
         school_class.academic_year = academic_year
+    if archive is True:
+        school_class.archived_at = dt.now(tz=UTC)
+    elif archive is False:
+        school_class.archived_at = None
     try:
         await db.commit()
         await db.refresh(school_class)
@@ -195,9 +200,7 @@ async def list_members(
     # Verify class belongs to org
     await get_class(db, class_id=class_id, org_id=org_id)
 
-    result = await db.execute(
-        select(ClassMember).where(ClassMember.class_id == class_id)
-    )
+    result = await db.execute(select(ClassMember).where(ClassMember.class_id == class_id))
     return list(result.scalars().all())
 
 
@@ -277,9 +280,7 @@ async def list_assignments(
     if result.scalar_one_or_none() is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="ExamTest not found")
 
-    result = await db.execute(
-        select(TestAssignment).where(TestAssignment.test_id == test_id)
-    )
+    result = await db.execute(select(TestAssignment).where(TestAssignment.test_id == test_id))
     return list(result.scalars().all())
 
 
@@ -345,7 +346,9 @@ async def delete_assignment(
 
     # 409 if any ExamAttempt exists for the test
     attempt_count = await db.scalar(
-        select(func.count()).select_from(ExamAttempt).where(ExamAttempt.test_id == assignment.test_id)
+        select(func.count())
+        .select_from(ExamAttempt)
+        .where(ExamAttempt.test_id == assignment.test_id)
     )
     if attempt_count:
         raise HTTPException(
@@ -377,9 +380,7 @@ async def get_student_available_tests(
     now = dt.now(tz=UTC)
 
     # Find all ClassMember rows for this user
-    member_result = await db.execute(
-        select(ClassMember).where(ClassMember.user_id == user_id)
-    )
+    member_result = await db.execute(select(ClassMember).where(ClassMember.user_id == user_id))
     members = member_result.scalars().all()
     if not members:
         return []
@@ -413,9 +414,7 @@ async def get_student_available_tests(
         attempt = attempt_result.scalar_one_or_none()
 
         # Load the bank for the subject
-        bank_result = await db.execute(
-            select(ExamBank).where(ExamBank.id == a.test.bank_id)
-        )
+        bank_result = await db.execute(select(ExamBank).where(ExamBank.id == a.test.bank_id))
         bank = bank_result.scalar_one_or_none()
 
         rows.append(

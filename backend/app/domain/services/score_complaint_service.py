@@ -17,6 +17,7 @@ from app.domain.models.exam import (
     ExamAttempt,
     ExamBank,
     ExamTest,
+    ReviewAuditLog,
     ScoreComplaint,
 )
 
@@ -41,9 +42,7 @@ async def _get_attempt_with_user_guard(
     )
     attempt = result.scalar_one_or_none()
     if attempt is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="ExamAttempt not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="ExamAttempt not found")
     if attempt.user_id != user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
     return attempt
@@ -117,9 +116,7 @@ async def list_attempt_complaints(
 
     Guard: attempt.user_id == user_id (403).
     """
-    await _get_attempt_with_user_guard(
-        db, attempt_id=attempt_id, user_id=user_id, org_id=org_id
-    )
+    await _get_attempt_with_user_guard(db, attempt_id=attempt_id, user_id=user_id, org_id=org_id)
 
     result = await db.execute(
         select(ScoreComplaint)
@@ -139,27 +136,48 @@ async def list_test_complaints(
     *,
     test_id: uuid.UUID,
     org_id: uuid.UUID,
-) -> list[ScoreComplaint]:
+) -> list[dict]:
     """All complaints for a test (teacher view).
 
+    When test.anonymous_grading=True, filed_by is replaced with attempt.anon_id.
     Joins: ScoreComplaint → ExamAttempt → ExamTest → ExamBank (org check).
     """
-    # Verify test belongs to this org
+    # Verify test belongs to this org and load the flag
     test_result = await db.execute(
         select(ExamTest)
         .join(ExamBank, ExamTest.bank_id == ExamBank.id)
         .where(ExamTest.id == test_id, ExamBank.org_id == org_id)
     )
-    if test_result.scalar_one_or_none() is None:
+    test = test_result.scalar_one_or_none()
+    if test is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="ExamTest not found")
 
+    anonymous = bool(test.anonymous_grading)
+
     result = await db.execute(
-        select(ScoreComplaint)
+        select(ScoreComplaint, ExamAttempt.anon_id)
         .join(ExamAttempt, ScoreComplaint.attempt_id == ExamAttempt.id)
         .where(ExamAttempt.test_id == test_id)
         .order_by(ScoreComplaint.created_at.desc())
     )
-    return list(result.scalars().all())
+    rows = result.all()
+
+    return [
+        {
+            "id": c.id,
+            "attempt_id": c.attempt_id,
+            "question_id": c.question_id,
+            "filed_by": anon_id if anonymous else c.filed_by,
+            "reason": c.reason,
+            "status": c.status,
+            "reviewed_by": c.reviewed_by,
+            "review_note": c.review_note,
+            "score_override": c.score_override,
+            "reviewed_at": c.reviewed_at,
+            "created_at": c.created_at,
+        }
+        for c, anon_id in rows
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -256,6 +274,42 @@ async def resolve_complaint(
     complaint.review_note = review_note
     complaint.score_override = score_override
     complaint.reviewed_at = datetime.now(tz=UTC)
+
+    # Write audit log when a score override is applied (FR-4.21.3)
+    if status == ComplaintStatus.approved and score_override is not None:
+        attempt_for_audit = await db.get(ExamAttempt, complaint.attempt_id)
+        if attempt_for_audit is not None:
+            # Load org_id via bank
+            test_for_audit = await db.get(ExamTest, attempt_for_audit.test_id)
+            bank_for_audit = (
+                await db.get(ExamBank, test_for_audit.bank_id) if test_for_audit else None
+            )
+            if bank_for_audit is not None and complaint.question_id is not None:
+                    # Dissertation-level override: record against the DissertationAnswer
+                    da_result = await db.execute(
+                        select(DissertationAnswer).where(
+                            DissertationAnswer.attempt_id == complaint.attempt_id,
+                            DissertationAnswer.question_id == complaint.question_id,
+                        )
+                    )
+                    da_for_audit = da_result.scalar_one_or_none()
+                    if da_for_audit is not None:
+                        audit_entry = ReviewAuditLog(
+                            answer_id=da_for_audit.id,
+                            attempt_id=complaint.attempt_id,
+                            test_id=attempt_for_audit.test_id,
+                            org_id=bank_for_audit.org_id,
+                            actor_id=resolved_by,
+                            actor_role="teacher",
+                            action="complaint_resolved",
+                            old_values={"human_score": da_for_audit.human_score},
+                            new_values={
+                                "human_score": score_override,
+                                "complaint_id": str(complaint.id),
+                                "review_note": review_note,
+                            },
+                        )
+                        db.add(audit_entry)
 
     await db.commit()
     await db.refresh(complaint)
