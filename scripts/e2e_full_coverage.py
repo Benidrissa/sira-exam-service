@@ -84,6 +84,11 @@ def decode_sub(token: str) -> str:
     return str(payload["sub"])
 
 
+def sub_to_uuid(sub: str) -> str:
+    """Convert a dev token sub (e.g. '1') to its DB UUID (dddddddd-0000-0000-0000-000000000001)."""
+    return f"dddddddd-0000-0000-0000-{int(sub):012d}"
+
+
 def set_cookie(page: Page, token: str) -> None:
     page.context.add_cookies([{
         "name": "access_token",
@@ -406,9 +411,9 @@ def phase1_class_management(teacher_token: str, browser: Browser, shared: dict) 
     else:
         fail("FR-4.19: archive=False should clear archived_at", f"HTTP {r3.status_code}")
 
-    # Enroll student01 (sub=1) + student02 (sub=2)
+    # Enroll student01 (sub=1) + student02 (sub=2) — enrollment requires full UUID
     for sub in ("1", "2"):
-        r_enroll = api_post(f"/exam/classes/{class_id}/members", teacher_token, {"user_id": sub})
+        r_enroll = api_post(f"/exam/classes/{class_id}/members", teacher_token, {"user_id": sub_to_uuid(sub)})
         if r_enroll.status_code in (200, 201):
             ok(f"US-15: Student (sub={sub}) enrolled in class")
         else:
@@ -570,7 +575,7 @@ def phase2_bank_and_tests(teacher_token: str, shared: dict) -> None:
             "class_id": class_id,
             "released_at": released_at,
             "closes_at": closes_at,
-            "quarter": "Q1-2026",
+            "quarter": "q1",
         })
         if r_assign.status_code in (200, 201):
             shared[f"assignment_id_{label}"] = r_assign.json().get("id")
