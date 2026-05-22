@@ -173,7 +173,7 @@ async def test_list_submissions_non_anonymous_preserves_user_id() -> None:
 async def test_attempt_creation_assigns_anon_id() -> None:
     """AC7 — start_attempt assigns anon_id; stored data is not masked."""
     from app.domain.models.exam import ExamQuestion, QuestionType
-    from app.domain.services.exam_attempt_service import start_exam_attempt
+    from app.domain.services.exam_attempt_service import start_attempt as start_exam_attempt
 
     db = _mock_db()
     test = _make_test(anonymous_grading=True)
@@ -188,13 +188,14 @@ async def test_attempt_creation_assigns_anon_id() -> None:
         validated=True,
     )
 
-    # 1. Check no existing submitted attempt → returns None
-    # 2. Load test
-    # 3. Load questions
+    # Call order inside start_attempt:
+    #   1. select(ExamTest).join(ExamBank) — load test
+    #   2. select(ExamAttempt) — guard: no prior submitted attempt
+    #   3. select(ExamQuestion) — fetch validated questions
     db.execute.side_effect = [
-        _scalar(None),  # no existing attempt
-        _scalar(test),  # load test
-        _scalars([q]),  # load questions
+        _scalar(test),   # load test
+        _scalar(None),   # no existing attempt
+        _scalars([q]),   # load questions
     ]
 
     created_attempt = ExamAttempt(
