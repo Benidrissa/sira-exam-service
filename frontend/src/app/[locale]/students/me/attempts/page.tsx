@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { listStudentHistory } from "@/lib/api";
 import type { StudentAttemptHistoryItem } from "@/types/exam";
@@ -12,7 +12,7 @@ import { ChevronDown, ChevronRight, Archive } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatError } from "@/lib/formatError";
 import { Select } from "@/components/ui/select";
-import { useDebounce } from "@/hooks/use-debounce";
+import { Input } from "@/components/ui/input";
 
 // ─── Grouping ─────────────────────────────────────────────────────────────────
 type ClassGroup = {
@@ -123,7 +123,12 @@ export default function MyAttemptsPage() {
   const locale = params.locale as string;
   const [search, setSearch] = useState("");
   const [passedFilter, setPassedFilter] = useState("");
-  const debouncedSearch = useDebounce(search, 300);
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(t);
+  }, [search]);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["student-history"],

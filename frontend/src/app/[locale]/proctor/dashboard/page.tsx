@@ -121,7 +121,7 @@ export default function ProctorDashboardPage() {
       pageSize: PROCTOR_PAGE_SIZE,
       filterFn: (s, f) => {
         const matchStatus = !f.status || s.status === f.status;
-        const matchSearch = !f.search || s.id.includes(f.search) || s.student_id?.includes(f.search);
+        const matchSearch = !f.search || s.id.includes(f.search) || s.user_id.includes(f.search);
         return matchStatus && matchSearch;
       },
     });
