@@ -33,7 +33,10 @@ function ComplaintSection({ attemptId, questionId, complaints }: { attemptId: st
 
   return open ? (
     <div className="space-y-2 mt-2">
-      <Textarea placeholder="Describe your dispute (min 20 chars)" value={reason} onChange={e => setReason(e.target.value)} rows={3} />
+      <Textarea placeholder="Describe your dispute…" value={reason} onChange={e => setReason(e.target.value)} rows={3} />
+      <p className={`text-xs text-right ${reason.length < 20 ? "text-destructive" : "text-muted-foreground"}`}>
+        {reason.length}/20 minimum characters
+      </p>
       <div className="flex gap-2">
         <Button size="sm" onClick={() => mutation.mutate()} disabled={reason.length < 20 || mutation.isPending}>
           {mutation.isPending ? "Submitting…" : "Submit"}

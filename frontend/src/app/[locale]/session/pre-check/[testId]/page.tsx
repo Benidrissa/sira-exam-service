@@ -706,8 +706,8 @@ function ConsentStep({
           className="mt-0.5 accent-blue-600 w-4 h-4"
         />
         <span className="text-sm text-gray-700">
-          I understand and consent to video proctoring for exam{" "}
-          <strong>{testId}</strong>.
+          I understand and consent to video proctoring for this exam{" "}
+          <span className="font-mono text-xs text-gray-500">(ID: {testId.slice(0, 8)}…)</span>.
         </span>
       </label>
 
