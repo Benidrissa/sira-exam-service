@@ -41,8 +41,11 @@ def warn(msg: str) -> None:
     print(f"  ⚠️  WARN: {msg}")
 
 
+_TIMEOUT = 30  # staging cold-start can exceed 15s
+
+
 def get_token(role: str, sub: str = "1") -> str:
-    r = requests.get(f"{API}/dev/tokens?role={role}&sub={sub}", timeout=10)
+    r = requests.get(f"{API}/dev/tokens?role={role}&sub={sub}", timeout=_TIMEOUT)
     r.raise_for_status()
     return r.json()["access_token"]
 
@@ -51,7 +54,7 @@ def api_get(path: str, token: str) -> requests.Response:
     return requests.get(
         f"{API}{path}",
         headers={"Authorization": f"Bearer {token}"},
-        timeout=15,
+        timeout=_TIMEOUT,
     )
 
 
@@ -60,7 +63,7 @@ def api_post(path: str, token: str, body: dict | None = None) -> requests.Respon
         f"{API}{path}",
         json=body or {},
         headers={"Authorization": f"Bearer {token}"},
-        timeout=15,
+        timeout=_TIMEOUT,
     )
 
 
@@ -69,7 +72,7 @@ def api_patch(path: str, token: str, body: dict) -> requests.Response:
         f"{API}{path}",
         json=body,
         headers={"Authorization": f"Bearer {token}"},
-        timeout=15,
+        timeout=_TIMEOUT,
     )
 
 
@@ -77,7 +80,7 @@ def api_delete(path: str, token: str) -> requests.Response:
     return requests.delete(
         f"{API}{path}",
         headers={"Authorization": f"Bearer {token}"},
-        timeout=15,
+        timeout=_TIMEOUT,
     )
 
 
