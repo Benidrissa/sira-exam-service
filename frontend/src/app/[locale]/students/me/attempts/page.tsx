@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ChevronDown, ChevronRight, Archive } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { formatError } from "@/lib/formatError";
 
 // ─── Grouping ─────────────────────────────────────────────────────────────────
 type ClassGroup = {
@@ -124,8 +126,13 @@ export default function MyAttemptsPage() {
     staleTime: 30_000,
   });
 
-  if (isLoading) return <div className="p-8">Loading…</div>;
-  if (error) return <p className="p-8 text-destructive">{String(error)}</p>;
+  if (isLoading) return (
+    <main className="max-w-3xl mx-auto p-8 space-y-6">
+      <Skeleton className="h-8 w-48" />
+      {[1, 2, 3].map(i => <Skeleton key={i} className="h-24 w-full rounded-xl" />)}
+    </main>
+  );
+  if (error) return <p className="p-8 text-destructive">{formatError(error)}</p>;
 
   const courseGroups = buildCourseGroups(data ?? []);
 
@@ -133,7 +140,12 @@ export default function MyAttemptsPage() {
     <main className="max-w-3xl mx-auto p-8 space-y-6">
       <h1 className="text-2xl font-bold">My Exams</h1>
 
-      {courseGroups.length === 0 && <p className="text-muted-foreground">No completed exams yet.</p>}
+      {courseGroups.length === 0 && (
+        <div className="py-12 text-center text-muted-foreground space-y-2">
+          <p className="font-medium">No completed exams yet.</p>
+          <p className="text-sm">Your results will appear here once you submit an exam and your instructor validates it.</p>
+        </div>
+      )}
 
       {courseGroups.map((course) => (
         <section key={course.course_key}>

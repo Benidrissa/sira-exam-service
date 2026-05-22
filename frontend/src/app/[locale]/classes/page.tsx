@@ -9,7 +9,10 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { Archive, ArchiveRestore } from "lucide-react";
+import { Archive, ArchiveRestore, BookOpen } from "lucide-react";
+import { toast } from "sonner";
+import { formatError } from "@/lib/formatError";
+import { Skeleton } from "@/components/ui/skeleton";
 
 function getRoleFromCookie(): string | null {
   if (typeof document === "undefined") return null;
@@ -39,21 +42,26 @@ export default function ClassesPage() {
     mutationFn: () => createSchoolClass({ name, academic_year: year }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["school-classes"] });
-      setName("");
-      setYear("");
-      setCreateError(null);
+      setName(""); setYear(""); setCreateError(null);
+      toast.success("Class created");
     },
-    onError: (e) => setCreateError(String(e)),
+    onError: (e) => { const msg = formatError(e); setCreateError(msg); toast.error(msg); },
   });
 
   const archiveMutation = useMutation({
     mutationFn: ({ classId, archive }: { classId: string; archive: boolean }) =>
       updateClass(classId, { archive }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["school-classes"] }),
+    onSuccess: (_r, { archive }) => { qc.invalidateQueries({ queryKey: ["school-classes"] }); toast.success(archive ? "Class archived" : "Class unarchived"); },
+    onError: (e) => toast.error(formatError(e)),
   });
 
-  if (isLoading) return <div className="p-8">Loading…</div>;
-  if (error) return <p className="p-8 text-destructive">{String(error)}</p>;
+  if (isLoading) return (
+    <main className="max-w-4xl mx-auto p-8 space-y-6">
+      <Skeleton className="h-8 w-40" />
+      {[1, 2, 3].map(i => <Skeleton key={i} className="h-16 w-full rounded-xl" />)}
+    </main>
+  );
+  if (error) return <p className="p-8 text-destructive">{formatError(error)}</p>;
 
   return (
     <main className="max-w-4xl mx-auto p-8 space-y-6">
@@ -64,10 +72,10 @@ export default function ClassesPage() {
         <Card>
           <CardHeader><CardTitle>Create Class</CardTitle></CardHeader>
           <CardContent className="space-y-3">
-            <div className="flex gap-3">
+            <div className="flex flex-col sm:flex-row gap-3">
               <Input placeholder="Class name (e.g. L3 Info A)" value={name} onChange={e => setName(e.target.value)} />
-              <Input placeholder="Year (e.g. 2025-2026)" value={year} onChange={e => setYear(e.target.value)} />
-              <Button onClick={() => createMutation.mutate()} disabled={!name || !year || createMutation.isPending}>
+              <Input placeholder="Academic year (e.g. 2025-2026)" value={year} onChange={e => setYear(e.target.value)} />
+              <Button onClick={() => createMutation.mutate()} disabled={!name || !year || createMutation.isPending} className="shrink-0">
                 {createMutation.isPending ? "Creating…" : "Create"}
               </Button>
             </div>
@@ -78,7 +86,14 @@ export default function ClassesPage() {
 
       {/* Class list */}
       <div className="space-y-3">
-        {classes?.length === 0 && <p className="text-muted-foreground">No classes yet.</p>}
+        {classes?.length === 0 && isTeacher && (
+          <div className="py-12 text-center space-y-3">
+            <BookOpen className="mx-auto h-10 w-10 text-muted-foreground" />
+            <p className="font-medium">No classes yet</p>
+            <p className="text-sm text-muted-foreground">Create your first class to assign exams to students</p>
+          </div>
+        )}
+        {classes?.length === 0 && !isTeacher && <p className="text-muted-foreground">No classes found.</p>}
         {classes?.map((c: SchoolClass) => (
           <Card key={c.id} className={c.archived_at ? "opacity-60" : ""}>
             <CardContent className="flex items-center justify-between py-4">

@@ -27,6 +27,8 @@ async def create_bank(
         subject=data.subject,
         language=data.language,
         passing_score=data.passing_score,
+        course_code=data.course_code,   # FR-4.18
+        course_name=data.course_name,   # FR-4.18
         status=BankStatus.draft,
     )
     db.add(bank)
