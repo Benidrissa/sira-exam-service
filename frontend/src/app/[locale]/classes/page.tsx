@@ -9,9 +9,10 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { Archive, ArchiveRestore } from "lucide-react";
+import { Archive, ArchiveRestore, BookOpen } from "lucide-react";
 import { toast } from "sonner";
 import { formatError } from "@/lib/formatError";
+import { Skeleton } from "@/components/ui/skeleton";
 
 function getRoleFromCookie(): string | null {
   if (typeof document === "undefined") return null;
@@ -54,7 +55,12 @@ export default function ClassesPage() {
     onError: (e) => toast.error(formatError(e)),
   });
 
-  if (isLoading) return <div className="p-8">Loading…</div>;
+  if (isLoading) return (
+    <main className="max-w-4xl mx-auto p-8 space-y-6">
+      <Skeleton className="h-8 w-40" />
+      {[1, 2, 3].map(i => <Skeleton key={i} className="h-16 w-full rounded-xl" />)}
+    </main>
+  );
   if (error) return <p className="p-8 text-destructive">{formatError(error)}</p>;
 
   return (
@@ -80,7 +86,14 @@ export default function ClassesPage() {
 
       {/* Class list */}
       <div className="space-y-3">
-        {classes?.length === 0 && <p className="text-muted-foreground">No classes yet.</p>}
+        {classes?.length === 0 && isTeacher && (
+          <div className="py-12 text-center space-y-3">
+            <BookOpen className="mx-auto h-10 w-10 text-muted-foreground" />
+            <p className="font-medium">No classes yet</p>
+            <p className="text-sm text-muted-foreground">Create your first class to assign exams to students</p>
+          </div>
+        )}
+        {classes?.length === 0 && !isTeacher && <p className="text-muted-foreground">No classes found.</p>}
         {classes?.map((c: SchoolClass) => (
           <Card key={c.id} className={c.archived_at ? "opacity-60" : ""}>
             <CardContent className="flex items-center justify-between py-4">

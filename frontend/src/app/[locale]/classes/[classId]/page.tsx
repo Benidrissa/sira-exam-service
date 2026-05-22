@@ -10,6 +10,7 @@ import { useParams } from "next/navigation";
 import { toast } from "sonner";
 import { formatError } from "@/lib/formatError";
 import { BackLink } from "@/components/BackLink";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export default function ClassDetailPage() {
   const params = useParams();
@@ -36,7 +37,13 @@ export default function ClassDetailPage() {
     onError: (e) => toast.error(formatError(e)),
   });
 
-  if (isLoading) return <div className="p-8">Loading…</div>;
+  if (isLoading) return (
+    <main className="max-w-3xl mx-auto p-8 space-y-6">
+      <Skeleton className="h-8 w-56" />
+      <Skeleton className="h-28 w-full rounded-xl" />
+      <Skeleton className="h-36 w-full rounded-xl" />
+    </main>
+  );
   if (error || !cls) return <p className="p-8 text-destructive">{formatError(error)}</p>;
 
   return (

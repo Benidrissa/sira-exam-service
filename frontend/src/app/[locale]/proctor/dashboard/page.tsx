@@ -4,6 +4,8 @@ import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { listActiveSessions } from "@/lib/api";
 import type { SessionSummary } from "@/types/exam";
+import { Skeleton } from "@/components/ui/skeleton";
+import { formatError } from "@/lib/formatError";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -128,25 +130,26 @@ export default function ProctorDashboardPage() {
 
       {/* States */}
       {isLoading && (
-        <p className="text-sm text-gray-400 py-8 text-center">Loading sessions…</p>
-      )}
-
-      {isError && (
-        <p className="text-sm text-red-600 py-4">
-          Failed to load sessions: {String(error)}
-        </p>
-      )}
-
-      {sessions && sessions.length === 0 && (
-        <div className="py-16 text-center">
-          <p className="text-gray-400 text-sm">No active sessions at the moment.</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-64 w-full rounded-xl" />)}
         </div>
       )}
 
-      {/* Session grid */}
+      {isError && (
+        <p className="text-sm text-red-600 py-4">{formatError(error)}</p>
+      )}
+
+      {sessions && sessions.length === 0 && (
+        <div className="py-16 text-center space-y-2">
+          <p className="text-gray-400 text-sm">No active sessions at the moment.</p>
+          <p className="text-xs text-gray-300">Dashboard auto-refreshes every 5 seconds.</p>
+        </div>
+      )}
+
+      {/* Session grid — sorted by unacked alerts descending */}
       {sessions && sessions.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {sessions.map((s) => (
+          {[...sessions].sort((a, b) => (b.unacked_alert_count ?? 0) - (a.unacked_alert_count ?? 0)).map((s) => (
             <SessionCard key={s.id} session={s} />
           ))}
         </div>

@@ -12,6 +12,7 @@ import { useParams } from "next/navigation";
 import { BackLink } from "@/components/BackLink";
 import { formatError } from "@/lib/formatError";
 import { toast } from "sonner";
+import { Skeleton } from "@/components/ui/skeleton";
 
 function ComplaintSection({ attemptId, questionId, complaints }: { attemptId: string; questionId: string | null; complaints: ScoreComplaint[] }) {
   const qc = useQueryClient();
@@ -61,7 +62,12 @@ export default function AttemptReviewPage() {
     enabled: !!data?.feedback_available,
   });
 
-  if (isLoading) return <div className="p-8">Loading…</div>;
+  if (isLoading) return (
+    <main className="max-w-4xl mx-auto p-8 space-y-6">
+      <Skeleton className="h-8 w-48" />
+      {[1, 2, 3].map(i => <Skeleton key={i} className="h-32 w-full rounded-xl" />)}
+    </main>
+  );
   if (error || !data) return <p className="p-8 text-destructive">{formatError(error)}</p>;
 
   return (

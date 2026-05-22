@@ -11,6 +11,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { useParams } from "next/navigation";
 import { toast } from "sonner";
 import { formatError } from "@/lib/formatError";
+import { Skeleton } from "@/components/ui/skeleton";
 
 function ResolutionForm({ complaint, onDone }: { complaint: ScoreComplaint; onDone: () => void }) {
   const qc = useQueryClient();
@@ -60,7 +61,12 @@ export default function TestComplaintsPage() {
     queryFn: () => listTestComplaints(testId),
   });
 
-  if (isLoading) return <div className="p-8">Loading…</div>;
+  if (isLoading) return (
+    <main className="max-w-4xl mx-auto p-8 space-y-4">
+      <Skeleton className="h-8 w-48" />
+      {[1, 2].map(i => <Skeleton key={i} className="h-20 w-full rounded-xl" />)}
+    </main>
+  );
   if (error) return <p className="p-8 text-destructive">{formatError(error)}</p>;
 
   const badgeColor = (s: ComplaintStatus) =>

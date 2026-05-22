@@ -4,6 +4,9 @@ import { useRef, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
+import { Skeleton } from "@/components/ui/skeleton";
+import { formatError } from "@/lib/formatError";
+import { toast } from "sonner";
 import {
   getSessionDetail,
   acknowledgeAlert,
@@ -275,11 +278,19 @@ export default function SessionDetailPage() {
     onSuccess: () => {
       setShowTerminate(false);
       queryClient.invalidateQueries({ queryKey: ["session", sessionId] });
+      toast.success("Session terminated");
     },
+    onError: (e) => toast.error(formatError(e)),
   });
 
-  if (isLoading) return <p className="p-8 text-sm text-gray-400">Loading session…</p>;
-  if (isError) return <p className="p-8 text-sm text-red-600">Error: {String(error)}</p>;
+  if (isLoading) return (
+    <main className="max-w-5xl mx-auto p-6 space-y-6">
+      <Skeleton className="h-8 w-64" />
+      <Skeleton className="h-48 w-full rounded-xl" />
+      <Skeleton className="h-64 w-full rounded-xl" />
+    </main>
+  );
+  if (isError) return <p className="p-8 text-sm text-red-600">{formatError(error)}</p>;
   if (!session) return null;
 
   const recentSnapshots = [...session.snapshots]
