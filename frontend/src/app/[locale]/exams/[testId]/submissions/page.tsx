@@ -14,6 +14,7 @@ import { ChevronDown, ChevronRight, Archive } from "lucide-react";
 import { toast } from "sonner";
 import { formatError } from "@/lib/formatError";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 
 // ─── Grouping helpers ─────────────────────────────────────────────────────────
 type ClassGroup = {
@@ -132,6 +133,7 @@ export default function SubmissionsPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [overrideScore, setOverrideScore] = useState("");
   const [batchMsg, setBatchMsg] = useState<string | null>(null);
+  const [showBatchConfirm, setShowBatchConfirm] = useState(false);
 
   const { data: submissions, isLoading, error } = useQuery({
     queryKey: ["submissions", testId],
@@ -187,9 +189,17 @@ export default function SubmissionsPage() {
             <span className="text-sm font-medium">{selected.size} selected</span>
             <Input type="number" placeholder="Override score (optional, 0-100)" value={overrideScore}
               onChange={e => setOverrideScore(e.target.value)} className="w-56" />
-            <Button onClick={() => batchMutation.mutate()} disabled={batchMutation.isPending}>
+            <Button onClick={() => setShowBatchConfirm(true)} disabled={batchMutation.isPending}>
               {batchMutation.isPending ? "Validating…" : "Batch Validate"}
             </Button>
+            <ConfirmDialog
+              open={showBatchConfirm}
+              title={`Validate ${selected.size} submission${selected.size !== 1 ? "s" : ""}?`}
+              description="This marks the selected attempts as validated. Scores will become visible to students."
+              confirmLabel="Validate"
+              onConfirm={() => { setShowBatchConfirm(false); batchMutation.mutate(); }}
+              onCancel={() => setShowBatchConfirm(false)}
+            />
             <Button variant="outline" onClick={() => setSelected(new Set())}>Clear</Button>
           </CardContent>
         </Card>
