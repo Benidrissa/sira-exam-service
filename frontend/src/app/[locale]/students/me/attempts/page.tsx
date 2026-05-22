@@ -11,6 +11,8 @@ import { useParams } from "next/navigation";
 import { ChevronDown, ChevronRight, Archive } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatError } from "@/lib/formatError";
+import { Select } from "@/components/ui/select";
+import { useDebounce } from "@/hooks/use-debounce";
 
 // ─── Grouping ─────────────────────────────────────────────────────────────────
 type ClassGroup = {
@@ -119,6 +121,9 @@ function ClassAccordion({ group, locale }: { group: ClassGroup; locale: string }
 export default function MyAttemptsPage() {
   const params = useParams();
   const locale = params.locale as string;
+  const [search, setSearch] = useState("");
+  const [passedFilter, setPassedFilter] = useState("");
+  const debouncedSearch = useDebounce(search, 300);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["student-history"],
@@ -134,17 +139,52 @@ export default function MyAttemptsPage() {
   );
   if (error) return <p className="p-8 text-destructive">{formatError(error)}</p>;
 
-  const courseGroups = buildCourseGroups(data ?? []);
+  const allItems = data ?? [];
+
+  // Apply filters to flat list before grouping
+  const filtered = allItems.filter((item) => {
+    const matchSearch = !debouncedSearch || item.test_title.toLowerCase().includes(debouncedSearch.toLowerCase());
+    const matchPassed = !passedFilter
+      || (passedFilter === "passed" ? item.passed === true : item.passed === false);
+    return matchSearch && matchPassed;
+  });
+
+  const courseGroups = buildCourseGroups(filtered);
 
   return (
     <main className="max-w-3xl mx-auto p-8 space-y-6">
       <h1 className="text-2xl font-bold">My Exams</h1>
 
-      {courseGroups.length === 0 && (
+      {allItems.length > 0 && (
+        <div className="flex flex-col sm:flex-row gap-3">
+          <Input
+            placeholder="Search by exam title…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="max-w-xs"
+          />
+          <Select
+            options={[{ value: "passed", label: "Passed" }, { value: "failed", label: "Failed" }]}
+            placeholder="All results"
+            value={passedFilter}
+            onChange={e => setPassedFilter(e.target.value)}
+            className="w-36"
+          />
+          {(debouncedSearch || passedFilter) && (
+            <span className="self-center text-sm text-muted-foreground">{filtered.length} result{filtered.length !== 1 ? "s" : ""}</span>
+          )}
+        </div>
+      )}
+
+      {allItems.length === 0 && (
         <div className="py-12 text-center text-muted-foreground space-y-2">
           <p className="font-medium">No completed exams yet.</p>
           <p className="text-sm">Your results will appear here once you submit an exam and your instructor validates it.</p>
         </div>
+      )}
+
+      {allItems.length > 0 && courseGroups.length === 0 && (
+        <p className="text-sm text-muted-foreground">No exams match your filters.</p>
       )}
 
       {courseGroups.map((course) => (
