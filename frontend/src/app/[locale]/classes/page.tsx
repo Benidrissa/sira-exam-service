@@ -13,6 +13,97 @@ import { Archive, ArchiveRestore, BookOpen } from "lucide-react";
 import { toast } from "sonner";
 import { formatError } from "@/lib/formatError";
 import { Skeleton } from "@/components/ui/skeleton";
+import { usePaginatedList } from "@/hooks/usePaginatedList";
+import { PaginationControls } from "@/components/PaginationControls";
+import { Select } from "@/components/ui/select";
+
+function ClassListSection({
+  classes, isTeacher, locale, onArchive, archivePending,
+}: {
+  classes: SchoolClass[];
+  isTeacher: boolean;
+  locale: string;
+  onArchive: (id: string, archive: boolean) => void;
+  archivePending: boolean;
+}) {
+  const { page, total, totalPages, currentPage, setPage, filters, setFilter } =
+    usePaginatedList<SchoolClass>(classes, {
+      pageSize: 20,
+      filterFn: (c, f) => {
+        const matchSearch = !f.search || c.name.toLowerCase().includes(f.search.toLowerCase());
+        const matchStatus = !f.status
+          || (f.status === "archived" ? !!c.archived_at : !c.archived_at);
+        const matchYear = !f.year || c.academic_year === f.year;
+        return matchSearch && matchStatus && matchYear;
+      },
+    });
+
+  const years = [...new Set(classes.map((c) => c.academic_year).filter(Boolean))].sort().reverse();
+
+  if (classes.length === 0 && isTeacher) return (
+    <div className="py-12 text-center space-y-3">
+      <BookOpen className="mx-auto h-10 w-10 text-muted-foreground" />
+      <p className="font-medium">No classes yet</p>
+      <p className="text-sm text-muted-foreground">Create your first class to assign exams to students</p>
+    </div>
+  );
+  if (classes.length === 0) return <p className="text-muted-foreground">No classes found.</p>;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-col sm:flex-row gap-3">
+        <Input placeholder="Search by name…" value={filters.search} onChange={e => setFilter("search", e.target.value)} className="max-w-xs" />
+        <Select
+          options={[{ value: "active", label: "Active" }, { value: "archived", label: "Archived" }]}
+          placeholder="All classes"
+          value={filters.status}
+          onChange={e => setFilter("status", e.target.value)}
+          className="w-36"
+        />
+        {years.length > 1 && (
+          <Select
+            options={years.map(y => ({ value: y!, label: y! }))}
+            placeholder="All years"
+            value={filters.year ?? ""}
+            onChange={e => setFilter("year", e.target.value)}
+            className="w-36"
+          />
+        )}
+      </div>
+
+      {total === 0 && <p className="text-sm text-muted-foreground">No classes match your filters.</p>}
+
+      <div className="space-y-3">
+        {page.map((c) => (
+          <Card key={c.id} className={c.archived_at ? "opacity-60" : ""}>
+            <CardContent className="flex items-center justify-between py-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <p className="font-semibold">{c.name}</p>
+                  {c.archived_at && <Badge variant="secondary" className="text-xs">Archived</Badge>}
+                </div>
+                <p className="text-sm text-muted-foreground">{c.academic_year}</p>
+              </div>
+              <div className="flex items-center gap-2">
+                {isTeacher && (
+                  <Button variant="ghost" size="sm" onClick={() => onArchive(c.id, !c.archived_at)}
+                    disabled={archivePending} title={c.archived_at ? "Unarchive" : "Archive"}>
+                    {c.archived_at ? <ArchiveRestore className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
+                  </Button>
+                )}
+                <Link href={`/${locale}/classes/${c.id}`}>
+                  <Button variant="outline" size="sm">Manage →</Button>
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      <PaginationControls currentPage={currentPage} totalPages={totalPages} totalItems={total} pageSize={20} onPageChange={setPage} />
+    </div>
+  );
+}
 
 function getRoleFromCookie(): string | null {
   if (typeof document === "undefined") return null;
@@ -84,50 +175,14 @@ export default function ClassesPage() {
         </Card>
       )}
 
-      {/* Class list */}
-      <div className="space-y-3">
-        {classes?.length === 0 && isTeacher && (
-          <div className="py-12 text-center space-y-3">
-            <BookOpen className="mx-auto h-10 w-10 text-muted-foreground" />
-            <p className="font-medium">No classes yet</p>
-            <p className="text-sm text-muted-foreground">Create your first class to assign exams to students</p>
-          </div>
-        )}
-        {classes?.length === 0 && !isTeacher && <p className="text-muted-foreground">No classes found.</p>}
-        {classes?.map((c: SchoolClass) => (
-          <Card key={c.id} className={c.archived_at ? "opacity-60" : ""}>
-            <CardContent className="flex items-center justify-between py-4">
-              <div>
-                <div className="flex items-center gap-2">
-                  <p className="font-semibold">{c.name}</p>
-                  {c.archived_at && (
-                    <Badge variant="secondary" className="text-xs">Archived</Badge>
-                  )}
-                </div>
-                <p className="text-sm text-muted-foreground">{c.academic_year}</p>
-              </div>
-              <div className="flex items-center gap-2">
-                {isTeacher && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => archiveMutation.mutate({ classId: c.id, archive: !c.archived_at })}
-                    disabled={archiveMutation.isPending}
-                    title={c.archived_at ? "Unarchive" : "Archive"}
-                  >
-                    {c.archived_at
-                      ? <ArchiveRestore className="h-4 w-4" />
-                      : <Archive className="h-4 w-4" />}
-                  </Button>
-                )}
-                <Link href={`/${locale}/classes/${c.id}`}>
-                  <Button variant="outline" size="sm">Manage →</Button>
-                </Link>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      {/* Class list with filter + pagination */}
+      <ClassListSection
+        classes={classes ?? []}
+        isTeacher={isTeacher}
+        locale={locale}
+        onArchive={(classId, archive) => archiveMutation.mutate({ classId, archive })}
+        archivePending={archiveMutation.isPending}
+      />
     </main>
   );
 }
