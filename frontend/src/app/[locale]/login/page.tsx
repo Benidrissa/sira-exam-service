@@ -2,35 +2,54 @@
 
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { GraduationCap, BookOpen } from "lucide-react";
+import { GraduationCap, Eye, EyeOff } from "lucide-react";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { cn } from "@/lib/utils";
 
 const API_URL = process.env.NEXT_PUBLIC_EXAM_API_URL ?? "http://localhost:8001/api/v1";
 
+function roleFromEmail(email: string): "expert" | "user" | "admin" | "sub_admin" {
+  const lower = email.toLowerCase();
+  if (lower.includes("teacher") || lower.includes("expert")) return "expert";
+  if (lower.includes("sub_admin") || lower.includes("sub.admin")) return "sub_admin";
+  if (lower.includes("admin")) return "admin";
+  return "user";
+}
+
 export default function LoginPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirect = searchParams.get("redirect") ?? "/";
 
-  const [loading, setLoading] = useState<"expert" | "user" | null>(null);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function loginAs(role: "expert" | "user") {
-    setLoading(role);
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
     setError(null);
+
+    if (!email.trim() || !password.trim()) {
+      setError("Email and password are required.");
+      return;
+    }
+
+    setLoading(true);
     try {
+      const role = roleFromEmail(email);
       const res = await fetch(`${API_URL}/dev/tokens?role=${role}`);
       if (!res.ok) throw new Error(`Server returned ${res.status} — is the backend running with DEBUG=true?`);
       const data = await res.json();
       document.cookie = `access_token=${data.access_token}; path=/; SameSite=Lax; max-age=86400`;
       const isLoginPage = !redirect || redirect.includes("/login") || redirect === "/" || redirect.match(/^\/[a-z]{2}\/?$/);
-      router.push(isLoginPage ? `/${role === "user" ? "fr" : "fr"}/` : redirect);
+      router.push(isLoginPage ? "/fr/" : redirect);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
-      setLoading(null);
+      setLoading(false);
     }
   }
 
@@ -47,85 +66,100 @@ export default function LoginPage() {
         </div>
       </div>
 
-      {/* Role selection */}
-      <div className="w-full max-w-md space-y-3">
-        <p className="text-center text-sm font-medium text-blue-100 mb-5">
-          Select your role to continue
-        </p>
-
-        {/* Role cards side by side on sm+, stacked on mobile */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {/* Teacher card */}
-          <button
-            onClick={() => loginAs("expert")}
-            disabled={loading !== null}
-            className={cn(
-              "group flex flex-col items-center gap-3 rounded-xl border border-white/20 bg-white/10 backdrop-blur-sm p-5 text-center",
-              "transition-all duration-150 hover:bg-white/20 hover:-translate-y-0.5 hover:shadow-lg",
-              "disabled:opacity-60 disabled:cursor-not-allowed disabled:translate-y-0",
-              loading === "expert" && "opacity-60"
-            )}
-          >
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white/10 border border-white/20">
-              {loading === "expert" ? (
-                <LoadingSpinner size="default" className="text-white" />
-              ) : (
-                <BookOpen className="h-6 w-6 text-white" />
+      {/* Login form */}
+      <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-4">
+        <div className="space-y-3">
+          <div>
+            <label htmlFor="email" className="block text-sm font-medium text-blue-100 mb-1.5">
+              Email
+            </label>
+            <input
+              id="email"
+              type="email"
+              autoComplete="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@example.com"
+              disabled={loading}
+              className={cn(
+                "w-full rounded-xl border border-white/20 bg-white/10 backdrop-blur-sm px-4 py-2.5",
+                "text-white placeholder:text-blue-300/60 text-sm",
+                "focus:outline-none focus:ring-2 focus:ring-white/30",
+                "disabled:opacity-60"
               )}
-            </div>
-            <div>
-              <p className="font-semibold text-white text-sm">
-                {loading === "expert" ? "Signing in…" : "Continue as Teacher"}
-              </p>
-              <p className="text-xs text-blue-200 mt-1 leading-relaxed">
-                Create banks, review questions, grade dissertations
-              </p>
-            </div>
-          </button>
+            />
+          </div>
 
-          {/* Student card */}
-          <button
-            onClick={() => loginAs("user")}
-            disabled={loading !== null}
-            className={cn(
-              "group flex flex-col items-center gap-3 rounded-xl border border-white/20 bg-white/10 backdrop-blur-sm p-5 text-center",
-              "transition-all duration-150 hover:bg-white/20 hover:-translate-y-0.5 hover:shadow-lg",
-              "disabled:opacity-60 disabled:cursor-not-allowed disabled:translate-y-0",
-              loading === "user" && "opacity-60"
-            )}
-          >
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white/10 border border-white/20">
-              {loading === "user" ? (
-                <LoadingSpinner size="default" className="text-white" />
-              ) : (
-                <GraduationCap className="h-6 w-6 text-white" />
-              )}
+          <div>
+            <label htmlFor="password" className="block text-sm font-medium text-blue-100 mb-1.5">
+              Password
+            </label>
+            <div className="relative">
+              <input
+                id="password"
+                type={showPassword ? "text" : "password"}
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                disabled={loading}
+                className={cn(
+                  "w-full rounded-xl border border-white/20 bg-white/10 backdrop-blur-sm px-4 py-2.5 pr-11",
+                  "text-white placeholder:text-blue-300/60 text-sm",
+                  "focus:outline-none focus:ring-2 focus:ring-white/30",
+                  "disabled:opacity-60"
+                )}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                tabIndex={-1}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-blue-300 hover:text-white transition-colors"
+              >
+                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
             </div>
-            <div>
-              <p className="font-semibold text-white text-sm">
-                {loading === "user" ? "Signing in…" : "Continue as Student"}
-              </p>
-              <p className="text-xs text-blue-200 mt-1 leading-relaxed">
-                Take exams, submit answers, view your results
-              </p>
-            </div>
-          </button>
+          </div>
         </div>
 
-        {/* Error */}
         {error && (
-          <Alert variant="destructive" className="mt-4">
+          <Alert variant="destructive">
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         )}
-      </div>
 
-      {/* Staging badge — dev/staging only */}
+        <button
+          type="submit"
+          disabled={loading}
+          className={cn(
+            "w-full flex items-center justify-center gap-2 rounded-xl border border-white/20 bg-white/10 backdrop-blur-sm px-4 py-2.5",
+            "text-sm font-semibold text-white",
+            "transition-all duration-150 hover:bg-white/20",
+            "disabled:opacity-60 disabled:cursor-not-allowed"
+          )}
+        >
+          {loading ? (
+            <>
+              <LoadingSpinner size="default" className="text-white" />
+              Signing in…
+            </>
+          ) : (
+            "Sign in"
+          )}
+        </button>
+      </form>
+
+      {/* Staging badge with test credentials */}
       {process.env.NODE_ENV !== "production" && (
-        <div className="mt-8">
+        <div className="mt-8 space-y-2 text-center">
           <span className="inline-flex items-center rounded-full border border-amber-400/30 bg-amber-400/20 px-3 py-1 text-xs text-amber-200">
-            Staging environment — test credentials only
+            Staging — use test credentials below
           </span>
+          <div className="text-xs text-blue-300/70 space-y-0.5">
+            <p>teacher@sira.test · test1234 → Teacher</p>
+            <p>student@sira.test · test1234 → Student</p>
+            <p>admin@sira.test · test1234 → Admin</p>
+          </div>
         </div>
       )}
     </main>
