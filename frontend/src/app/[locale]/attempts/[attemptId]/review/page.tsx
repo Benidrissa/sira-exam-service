@@ -9,6 +9,10 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useParams } from "next/navigation";
+import { BackLink } from "@/components/BackLink";
+import { formatError } from "@/lib/formatError";
+import { toast } from "sonner";
+import { Skeleton } from "@/components/ui/skeleton";
 
 function ComplaintSection({ attemptId, questionId, complaints }: { attemptId: string; questionId: string | null; complaints: ScoreComplaint[] }) {
   const qc = useQueryClient();
@@ -18,7 +22,8 @@ function ComplaintSection({ attemptId, questionId, complaints }: { attemptId: st
 
   const mutation = useMutation({
     mutationFn: () => fileComplaint(attemptId, { question_id: questionId ?? undefined, reason }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["complaints", attemptId] }); setOpen(false); setReason(""); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["complaints", attemptId] }); setOpen(false); setReason(""); toast.success("Dispute submitted"); },
+    onError: (e) => toast.error(formatError(e)),
   });
 
   if (existing) {
@@ -28,7 +33,10 @@ function ComplaintSection({ attemptId, questionId, complaints }: { attemptId: st
 
   return open ? (
     <div className="space-y-2 mt-2">
-      <Textarea placeholder="Describe your dispute (min 20 chars)" value={reason} onChange={e => setReason(e.target.value)} rows={3} />
+      <Textarea placeholder="Describe your dispute…" value={reason} onChange={e => setReason(e.target.value)} rows={3} />
+      <p className={`text-xs text-right ${reason.length < 20 ? "text-destructive" : "text-muted-foreground"}`}>
+        {reason.length}/20 minimum characters
+      </p>
       <div className="flex gap-2">
         <Button size="sm" onClick={() => mutation.mutate()} disabled={reason.length < 20 || mutation.isPending}>
           {mutation.isPending ? "Submitting…" : "Submit"}
@@ -44,6 +52,7 @@ function ComplaintSection({ attemptId, questionId, complaints }: { attemptId: st
 export default function AttemptReviewPage() {
   const params = useParams();
   const attemptId = params.attemptId as string;
+  const locale = params.locale as string;
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["attempt-review", attemptId],
@@ -56,11 +65,17 @@ export default function AttemptReviewPage() {
     enabled: !!data?.feedback_available,
   });
 
-  if (isLoading) return <div className="p-8">Loading…</div>;
-  if (error || !data) return <p className="p-8 text-destructive">{String(error)}</p>;
+  if (isLoading) return (
+    <main className="max-w-4xl mx-auto p-8 space-y-6">
+      <Skeleton className="h-8 w-48" />
+      {[1, 2, 3].map(i => <Skeleton key={i} className="h-32 w-full rounded-xl" />)}
+    </main>
+  );
+  if (error || !data) return <p className="p-8 text-destructive">{formatError(error)}</p>;
 
   return (
     <main className="max-w-4xl mx-auto p-8 space-y-6">
+      <BackLink href={`/${locale}/students/me/attempts`} label="My Exams" />
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Exam Review</h1>
         <div className="text-sm">
@@ -125,8 +140,9 @@ export default function AttemptReviewPage() {
                   {data.feedback_available && (
                     <>
                       <div className="flex gap-4 text-sm">
-                        {q.ai_score != null && <span className="text-blue-600">AI score: {q.ai_score}</span>}
-                        {q.human_score != null && <span className="text-green-600">Final score: {q.human_score}</span>}
+                        {q.ai_score != null && <span className="text-blue-600">AI score (preliminary): {q.ai_score}</span>}
+                        {q.human_score != null && <span className="text-green-600 font-medium">Final score: {q.human_score}</span>}
+                        {q.ai_score != null && q.human_score == null && <span className="text-amber-600 text-xs">Awaiting human review</span>}
                       </div>
                       {q.ai_feedback && <p className="text-xs text-muted-foreground">{q.ai_feedback}</p>}
                     </>

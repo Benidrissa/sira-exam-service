@@ -32,8 +32,11 @@ function ScoreDelta({ entry }: { entry: ReviewAuditLogEntry }) {
   );
 }
 
+const PAGE_SIZE = 10;
+
 export function AuditLogPanel({ testId }: { testId: string }) {
   const [open, setOpen] = useState(false);
+  const [showAll, setShowAll] = useState(false);
 
   const { data: entries, isLoading } = useQuery<ReviewAuditLogEntry[]>({
     queryKey: ["audit-log", testId],
@@ -47,6 +50,8 @@ export function AuditLogPanel({ testId }: { testId: string }) {
     <div className="border rounded-lg mt-6">
       <button
         onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-label="Toggle review audit log"
         className="flex w-full items-center justify-between px-4 py-3 text-sm font-medium text-left hover:bg-muted/50 transition-colors"
       >
         <span className="flex items-center gap-2">
@@ -65,40 +70,56 @@ export function AuditLogPanel({ testId }: { testId: string }) {
             <p className="p-4 text-sm text-muted-foreground">Loading…</p>
           ) : !entries || entries.length === 0 ? (
             <p className="p-4 text-sm text-muted-foreground">No review changes recorded yet.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b bg-muted/30 text-xs text-muted-foreground">
-                    <th className="px-4 py-2 text-left">When</th>
-                    <th className="px-4 py-2 text-left">Actor</th>
-                    <th className="px-4 py-2 text-left">Role</th>
-                    <th className="px-4 py-2 text-left">Action</th>
-                    <th className="px-4 py-2 text-left">Score (old → new)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {entries.map((e) => (
-                    <tr key={e.id} className="border-b last:border-0 hover:bg-muted/20">
-                      <td className="px-4 py-2 whitespace-nowrap text-muted-foreground">
-                        {new Date(e.occurred_at).toLocaleString()}
-                      </td>
-                      <td className="px-4 py-2 font-mono text-xs">{e.actor_id.slice(0, 8)}</td>
-                      <td className="px-4 py-2">
-                        <Badge variant="outline" className="text-xs">{e.actor_role}</Badge>
-                      </td>
-                      <td className="px-4 py-2">
-                        <ActionBadge action={e.action} />
-                      </td>
-                      <td className="px-4 py-2">
-                        <ScoreDelta entry={e} />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+          ) : (() => {
+              const visible = showAll ? entries : entries.slice(0, PAGE_SIZE);
+              return (
+                <>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b bg-muted/30 text-xs text-muted-foreground">
+                          <th className="px-4 py-2 text-left">When</th>
+                          <th className="px-4 py-2 text-left">Actor</th>
+                          <th className="px-4 py-2 text-left">Role</th>
+                          <th className="px-4 py-2 text-left">Action</th>
+                          <th className="px-4 py-2 text-left">Score</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {visible.map((e) => (
+                          <tr key={e.id} className="border-b last:border-0 hover:bg-muted/20">
+                            <td className="px-4 py-2 whitespace-nowrap text-muted-foreground">
+                              {new Date(e.occurred_at).toLocaleString()}
+                            </td>
+                            <td className="px-4 py-2 font-mono text-xs" title={e.actor_id}>{e.actor_id.slice(0, 8)}…</td>
+                            <td className="px-4 py-2">
+                              <Badge variant="outline" className="text-xs">{e.actor_role}</Badge>
+                            </td>
+                            <td className="px-4 py-2">
+                              <ActionBadge action={e.action} />
+                            </td>
+                            <td className="px-4 py-2">
+                              <ScoreDelta entry={e} />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {entries.length > PAGE_SIZE && (
+                    <div className="px-4 py-2 border-t">
+                      <button
+                        onClick={() => setShowAll(v => !v)}
+                        className="text-xs text-primary hover:underline"
+                      >
+                        {showAll ? "Show less" : `Show all ${entries.length} entries`}
+                      </button>
+                    </div>
+                  )}
+                </>
+              );
+            })()
+          }
         </div>
       )}
     </div>

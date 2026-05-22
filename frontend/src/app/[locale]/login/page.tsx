@@ -120,12 +120,14 @@ export default function LoginPage() {
         )}
       </div>
 
-      {/* Staging badge */}
-      <div className="mt-8">
-        <span className="inline-flex items-center rounded-full border border-amber-400/30 bg-amber-400/20 px-3 py-1 text-xs text-amber-200">
-          Staging environment — test credentials only
-        </span>
-      </div>
+      {/* Staging badge — dev/staging only */}
+      {process.env.NODE_ENV !== "production" && (
+        <div className="mt-8">
+          <span className="inline-flex items-center rounded-full border border-amber-400/30 bg-amber-400/20 px-3 py-1 text-xs text-amber-200">
+            Staging environment — test credentials only
+          </span>
+        </div>
+      )}
     </main>
   );
 }

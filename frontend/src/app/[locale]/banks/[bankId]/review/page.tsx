@@ -24,6 +24,9 @@ import { cn } from "@/lib/utils";
 import {
   CheckCircle2, ChevronDown, ChevronUp, Copy, Plus, Trash2, Check,
 } from "lucide-react";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { toast } from "sonner";
+import { formatError } from "@/lib/formatError";
 
 // ─── API helpers not yet in api.ts ──────────────────────────────────────────
 function createQuestion(
@@ -53,6 +56,7 @@ export default function ReviewBoardPage() {
   const [publishState, setPublishState] = useState<"idle" | "publishing" | "done" | "error">("idle");
   const [testLink, setTestLink] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [showPublishConfirm, setShowPublishConfirm] = useState(false);
 
   useEffect(() => {
     Promise.all([listScenarios(bankId), listQuestions(bankId)])
@@ -86,8 +90,11 @@ export default function ReviewBoardPage() {
         setTestLink(link);
       }
       setPublishState("done");
+      toast.success("Exam bank published");
     } catch (e) {
-      setSaveError(e instanceof Error ? e.message : String(e));
+      const msg = formatError(e);
+      setSaveError(msg);
+      toast.error(msg);
       setPublishState("error");
     }
   }
@@ -153,14 +160,24 @@ export default function ReviewBoardPage() {
               </Button>
             </div>
           ) : (
-            <Button
-              disabled={publishState === "publishing"}
-              onClick={handleValidateAll}
-            >
-              {publishState === "publishing" ? (
-                <><LoadingSpinner className="h-4 w-4" /> Publishing…</>
-              ) : allValidated ? "Publish Bank" : "Validate All & Publish"}
-            </Button>
+            <>
+              <Button
+                disabled={publishState === "publishing"}
+                onClick={() => setShowPublishConfirm(true)}
+              >
+                {publishState === "publishing" ? (
+                  <><LoadingSpinner className="h-4 w-4" /> Publishing…</>
+                ) : allValidated ? "Publish Bank" : "Validate All & Publish"}
+              </Button>
+              <ConfirmDialog
+                open={showPublishConfirm}
+                title={allValidated ? "Publish this exam bank?" : "Validate & publish this exam bank?"}
+                description="Students will be able to access tests from this bank. This action cannot be undone."
+                confirmLabel="Publish"
+                onConfirm={() => { setShowPublishConfirm(false); handleValidateAll(); }}
+                onCancel={() => setShowPublishConfirm(false)}
+              />
+            </>
           )}
         </div>
       </div>

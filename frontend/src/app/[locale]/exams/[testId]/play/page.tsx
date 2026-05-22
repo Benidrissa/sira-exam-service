@@ -49,6 +49,27 @@ export default function ExamPlayerPage() {
       : 0
   ) as 0 | 1 | 2;
 
+  // Restore draft answers from localStorage (survives hard reload)
+  useEffect(() => {
+    try {
+      const draft = localStorage.getItem(`exam_draft_${testId}`);
+      if (draft) {
+        const { mcq, diss } = JSON.parse(draft);
+        if (mcq) setMcqAnswers(mcq);
+        if (diss) setDissertations(diss);
+      }
+    } catch { /* ignore parse errors */ }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Persist draft answers on every change
+  useEffect(() => {
+    if (submitted) return;
+    try {
+      localStorage.setItem(`exam_draft_${testId}`, JSON.stringify({ mcq: mcqAnswers, diss: dissertations }));
+    } catch { /* ignore quota errors */ }
+  }, [mcqAnswers, dissertations, testId, submitted]);
+
   // Initialize IndexedDB
   useEffect(() => {
     openOfflineDb().then(setOfflineDb).catch(console.error);
@@ -190,6 +211,7 @@ export default function ExamPlayerPage() {
         }
       }
 
+      localStorage.removeItem(`exam_draft_${testId}`);
       setSubmitted(true);
       const params = new URLSearchParams({ attemptId: String(result.id) });
       if (result.mcq_score != null) params.set("score", String(result.mcq_score));

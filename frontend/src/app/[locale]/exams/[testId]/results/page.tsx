@@ -17,6 +17,9 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { CheckCircle2, Clock, FileText, Home, Info, Award, User, Save, Pencil, X } from "lucide-react";
+import { toast } from "sonner";
+import { formatError } from "@/lib/formatError";
+import { Skeleton } from "@/components/ui/skeleton";
 
 // ─── Role detection (same as NavBar) ────────────────────────────────────────
 function getRoleFromCookie(): string | null {
@@ -48,11 +51,12 @@ function TeacherGradingView({ testId, locale }: { testId: string; locale: string
   });
 
   if (isLoading) return (
-    <div className="flex items-center gap-2 p-8 text-sm text-muted-foreground">
-      <LoadingSpinner className="h-4 w-4" /> Loading answers…
-    </div>
+    <main className="max-w-3xl mx-auto p-8 space-y-6">
+      <Skeleton className="h-8 w-56" />
+      {[1, 2].map(i => <Skeleton key={i} className="h-64 w-full rounded-xl" />)}
+    </main>
   );
-  if (error) return <p className="p-8 text-sm text-destructive">{String(error)}</p>;
+  if (error) return <p className="p-8 text-sm text-destructive">{formatError(error)}</p>;
   if (!answers || answers.length === 0) return (
     <div className="max-w-2xl mx-auto p-8 space-y-4">
       <p className="text-sm text-muted-foreground">No dissertation answers pending review.</p>
@@ -132,8 +136,8 @@ function GradingCard({
 
   const mutation = useMutation({
     mutationFn: () => patchHumanScore(answer.id, buildPayload()),
-    onSuccess: (updated) => { onUpdated(updated); setSaveError(null); setIsEditing(false); },
-    onError: (e) => setSaveError(String(e)),
+    onSuccess: (updated) => { onUpdated(updated); setSaveError(null); setIsEditing(false); toast.success("Score saved"); },
+    onError: (e) => { const msg = formatError(e); setSaveError(msg); toast.error(msg); },
   });
 
   const statusVariant = {
@@ -270,7 +274,7 @@ function GradingCard({
               />
             </div>
 
-            {saveError && <p className="text-xs text-destructive">{saveError}</p>}
+            {saveError && <p className="text-xs text-destructive" role="alert">{saveError}</p>}
           </div>
         )}
       </CardContent>
