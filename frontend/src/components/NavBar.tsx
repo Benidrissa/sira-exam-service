@@ -81,7 +81,7 @@ export function NavBar() {
         </Link>
 
         {/* Actions */}
-        <nav className="flex items-center gap-1">
+        <nav className="flex items-center gap-2">
           {isTeacher && (
             <>
               {/* New Exam */}

@@ -72,10 +72,10 @@ export default function ClassesPage() {
         <Card>
           <CardHeader><CardTitle>Create Class</CardTitle></CardHeader>
           <CardContent className="space-y-3">
-            <div className="flex gap-3">
+            <div className="flex flex-col sm:flex-row gap-3">
               <Input placeholder="Class name (e.g. L3 Info A)" value={name} onChange={e => setName(e.target.value)} />
-              <Input placeholder="Year (e.g. 2025-2026)" value={year} onChange={e => setYear(e.target.value)} />
-              <Button onClick={() => createMutation.mutate()} disabled={!name || !year || createMutation.isPending}>
+              <Input placeholder="Academic year (e.g. 2025-2026)" value={year} onChange={e => setYear(e.target.value)} />
+              <Button onClick={() => createMutation.mutate()} disabled={!name || !year || createMutation.isPending} className="shrink-0">
                 {createMutation.isPending ? "Creating…" : "Create"}
               </Button>
             </div>

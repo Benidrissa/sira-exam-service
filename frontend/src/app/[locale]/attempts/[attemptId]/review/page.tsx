@@ -140,8 +140,9 @@ export default function AttemptReviewPage() {
                   {data.feedback_available && (
                     <>
                       <div className="flex gap-4 text-sm">
-                        {q.ai_score != null && <span className="text-blue-600">AI score: {q.ai_score}</span>}
-                        {q.human_score != null && <span className="text-green-600">Final score: {q.human_score}</span>}
+                        {q.ai_score != null && <span className="text-blue-600">AI score (preliminary): {q.ai_score}</span>}
+                        {q.human_score != null && <span className="text-green-600 font-medium">Final score: {q.human_score}</span>}
+                        {q.ai_score != null && q.human_score == null && <span className="text-amber-600 text-xs">Awaiting human review</span>}
                       </div>
                       {q.ai_feedback && <p className="text-xs text-muted-foreground">{q.ai_feedback}</p>}
                     </>

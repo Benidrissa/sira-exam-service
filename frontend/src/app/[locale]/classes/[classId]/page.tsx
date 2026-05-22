@@ -58,9 +58,12 @@ export default function ClassDetailPage() {
       <Card>
         <CardHeader><CardTitle>Enroll Student</CardTitle></CardHeader>
         <CardContent className="space-y-3">
-          <div className="flex gap-3">
-            <Input placeholder="Student user ID (UUID)" value={userId} onChange={e => setUserId(e.target.value)} className="font-mono text-sm" />
-            <Button onClick={() => enrollMutation.mutate()} disabled={!userId || enrollMutation.isPending}>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="flex-1 space-y-1">
+              <Input placeholder="Student UUID (e.g. dddddddd-0000-…)" value={userId} onChange={e => setUserId(e.target.value)} className="font-mono text-sm" />
+              <p className="text-xs text-muted-foreground">Paste the student&apos;s UUID from user management</p>
+            </div>
+            <Button onClick={() => enrollMutation.mutate()} disabled={!userId || enrollMutation.isPending} className="shrink-0">
               {enrollMutation.isPending ? "Enrolling…" : "Enroll"}
             </Button>
           </div>
