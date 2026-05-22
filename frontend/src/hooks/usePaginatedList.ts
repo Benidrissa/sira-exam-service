@@ -38,8 +38,8 @@ export function usePaginatedList<T>(
     ))],
   );
 
-  // Reset to page 1 when filter changes
-  useEffect(() => { setPage(1); }, [debouncedSearch, filters.status]);
+  // Reset to page 1 whenever any filter changes (includes extra keys beyond search/status)
+  useEffect(() => { setPage(1); }, [JSON.stringify(effectiveFilters)]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const safePage = Math.min(page, totalPages);
