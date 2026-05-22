@@ -20,6 +20,9 @@ import { CheckCircle2, Clock, FileText, Home, Info, Award, User, Save, Pencil, X
 import { toast } from "sonner";
 import { formatError } from "@/lib/formatError";
 import { Skeleton } from "@/components/ui/skeleton";
+import { usePaginatedList } from "@/hooks/usePaginatedList";
+import { PaginationControls } from "@/components/PaginationControls";
+import { Select } from "@/components/ui/select";
 
 // ─── Role detection (same as NavBar) ────────────────────────────────────────
 function getRoleFromCookie(): string | null {
@@ -66,20 +69,43 @@ function TeacherGradingView({ testId, locale }: { testId: string; locale: string
     </div>
   );
 
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const { page: gradingPage, total: gradingTotal, totalPages: gradingTotalPages,
+    currentPage: gradingCurrentPage, setPage: setGradingPage, filters: gradingFilters, setFilter: setGradingFilter } =
+    usePaginatedList<DissertationAnswer>(answers, {
+      pageSize: 10,
+      filterFn: (a, f) => !f.status || a.status === f.status,
+    });
+
   return (
     <main className="max-w-3xl mx-auto p-8 space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Dissertation Grading</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {answers.length} answer{answers.length !== 1 ? "s" : ""} to review.
-          {hasPending(answers) && " Auto-refreshing while AI is grading…"}
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold">Dissertation Grading</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {answers.length} answer{answers.length !== 1 ? "s" : ""} to review.
+            {hasPending(answers) && " Auto-refreshing while AI is grading…"}
+          </p>
+        </div>
+        <Select
+          options={[
+            { value: "pending", label: "Pending AI" },
+            { value: "ai_scored", label: "AI Scored" },
+            { value: "human_reviewed", label: "Human Reviewed" },
+          ]}
+          placeholder="All statuses"
+          value={gradingFilters.status}
+          onChange={e => setGradingFilter("status", e.target.value)}
+          className="w-44"
+        />
       </div>
 
-      {answers.map((answer, idx) => (
+      {gradingTotal === 0 && <p className="text-sm text-muted-foreground">No answers match this filter.</p>}
+
+      {gradingPage.map((answer, idx) => (
         <GradingCard
           key={answer.id}
-          index={idx + 1}
+          index={(gradingCurrentPage - 1) * 10 + idx + 1}
           answer={answer}
           onUpdated={(updated) => {
             qc.setQueryData<DissertationAnswer[]>(
@@ -89,6 +115,8 @@ function TeacherGradingView({ testId, locale }: { testId: string; locale: string
           }}
         />
       ))}
+
+      <PaginationControls currentPage={gradingCurrentPage} totalPages={gradingTotalPages} totalItems={gradingTotal} pageSize={10} onPageChange={setGradingPage} />
 
       <div className="flex justify-center pt-4">
         <Button variant="outline" onClick={() => router.push(`/${locale}/`)}>

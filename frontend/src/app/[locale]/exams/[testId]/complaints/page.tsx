@@ -12,6 +12,9 @@ import { useParams } from "next/navigation";
 import { toast } from "sonner";
 import { formatError } from "@/lib/formatError";
 import { Skeleton } from "@/components/ui/skeleton";
+import { usePaginatedList } from "@/hooks/usePaginatedList";
+import { PaginationControls } from "@/components/PaginationControls";
+import { Select } from "@/components/ui/select";
 
 function ResolutionForm({ complaint, onDone }: { complaint: ScoreComplaint; onDone: () => void }) {
   const qc = useQueryClient();
@@ -61,6 +64,12 @@ export default function TestComplaintsPage() {
     queryFn: () => listTestComplaints(testId),
   });
 
+  const { page, total, totalPages, currentPage, setPage, filters, setFilter } =
+    usePaginatedList<ScoreComplaint>(complaints ?? [], {
+      pageSize: 20,
+      filterFn: (c, f) => !f.status || c.status === f.status,
+    });
+
   if (isLoading) return (
     <main className="max-w-4xl mx-auto p-8 space-y-4">
       <Skeleton className="h-8 w-48" />
@@ -74,10 +83,26 @@ export default function TestComplaintsPage() {
 
   return (
     <main className="max-w-4xl mx-auto p-8 space-y-6">
-      <h1 className="text-2xl font-bold">Score Complaints</h1>
-      {complaints?.length === 0 && <p className="text-muted-foreground">No complaints filed.</p>}
+      <div className="flex items-center justify-between gap-4">
+        <h1 className="text-2xl font-bold">Score Complaints</h1>
+        {(complaints?.length ?? 0) > 0 && (
+          <Select
+            options={[
+              { value: "pending", label: "Pending" },
+              { value: "approved", label: "Approved" },
+              { value: "rejected", label: "Rejected" },
+            ]}
+            placeholder="All statuses"
+            value={filters.status}
+            onChange={e => setFilter("status", e.target.value)}
+            className="w-40"
+          />
+        )}
+      </div>
+      {(complaints?.length ?? 0) === 0 && <p className="text-muted-foreground">No complaints filed.</p>}
+      {total === 0 && (complaints?.length ?? 0) > 0 && <p className="text-sm text-muted-foreground">No complaints match this filter.</p>}
       <div className="space-y-4">
-        {complaints?.map((c: ScoreComplaint) => (
+        {page.map((c: ScoreComplaint) => (
           <Card key={c.id}>
             <CardContent className="py-4 space-y-2">
               <div className="flex items-start justify-between gap-4">
@@ -101,6 +126,7 @@ export default function TestComplaintsPage() {
           </Card>
         ))}
       </div>
+      <PaginationControls currentPage={currentPage} totalPages={totalPages} totalItems={total} pageSize={20} onPageChange={setPage} />
     </main>
   );
 }
