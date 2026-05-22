@@ -9,6 +9,9 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useParams } from "next/navigation";
+import { BackLink } from "@/components/BackLink";
+import { formatError } from "@/lib/formatError";
+import { toast } from "sonner";
 
 function ComplaintSection({ attemptId, questionId, complaints }: { attemptId: string; questionId: string | null; complaints: ScoreComplaint[] }) {
   const qc = useQueryClient();
@@ -18,7 +21,8 @@ function ComplaintSection({ attemptId, questionId, complaints }: { attemptId: st
 
   const mutation = useMutation({
     mutationFn: () => fileComplaint(attemptId, { question_id: questionId ?? undefined, reason }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["complaints", attemptId] }); setOpen(false); setReason(""); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["complaints", attemptId] }); setOpen(false); setReason(""); toast.success("Dispute submitted"); },
+    onError: (e) => toast.error(formatError(e)),
   });
 
   if (existing) {
@@ -44,6 +48,7 @@ function ComplaintSection({ attemptId, questionId, complaints }: { attemptId: st
 export default function AttemptReviewPage() {
   const params = useParams();
   const attemptId = params.attemptId as string;
+  const locale = params.locale as string;
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["attempt-review", attemptId],
@@ -57,10 +62,11 @@ export default function AttemptReviewPage() {
   });
 
   if (isLoading) return <div className="p-8">Loading…</div>;
-  if (error || !data) return <p className="p-8 text-destructive">{String(error)}</p>;
+  if (error || !data) return <p className="p-8 text-destructive">{formatError(error)}</p>;
 
   return (
     <main className="max-w-4xl mx-auto p-8 space-y-6">
+      <BackLink href={`/${locale}/students/me/attempts`} label="My Exams" />
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Exam Review</h1>
         <div className="text-sm">

@@ -4,11 +4,17 @@ import { getAttemptFullReview } from "@/lib/api";
 import type { ReviewQuestionAnswer } from "@/types/exam";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { useParams } from "next/navigation";
+import Link from "next/link";
+import { BackLink } from "@/components/BackLink";
+import { formatError } from "@/lib/formatError";
 
 export default function AttemptFullReviewPage() {
   const params = useParams();
   const attemptId = params.attemptId as string;
+  const testId = params.testId as string;
+  const locale = params.locale as string;
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["attempt-full-review", attemptId],
@@ -16,10 +22,16 @@ export default function AttemptFullReviewPage() {
   });
 
   if (isLoading) return <div className="p-8">Loading…</div>;
-  if (error || !data) return <p className="p-8 text-destructive">{String(error)}</p>;
+  if (error || !data) return <p className="p-8 text-destructive">{formatError(error)}</p>;
 
   return (
     <main className="max-w-4xl mx-auto p-8 space-y-6">
+      <div className="flex items-center justify-between">
+        <BackLink href={`/${locale}/exams/${testId}/submissions`} label="Submissions" />
+        <Link href={`/${locale}/exams/${testId}/results`}>
+          <Button variant="outline" size="sm">Open Grading Dashboard →</Button>
+        </Link>
+      </div>
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Student Attempt Review</h1>
         <div className="text-sm text-muted-foreground">

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams, usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { GraduationCap, Plus, LogOut, Shield, Users } from "lucide-react";
+import { GraduationCap, Plus, LogOut, Shield, Users, BookOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -61,7 +61,10 @@ export function NavBar() {
   }
 
   const isTeacher = role === "expert" || role === "admin" || role === "sub_admin";
-  const isActive = (path: string) => pathname === `/${locale}${path}`;
+  const isActive = (path: string) => {
+    const full = `/${locale}${path}`;
+    return pathname === full || pathname?.startsWith(full + "/");
+  };
 
   return (
     <header className="sticky top-0 z-40 h-14 w-full border-b border-border bg-background/95 backdrop-blur-sm">
@@ -119,6 +122,21 @@ export function NavBar() {
                 </Link>
               </Button>
             </>
+          )}
+
+          {/* Student: My Exams */}
+          {!isTeacher && role && (
+            <Button
+              variant="ghost"
+              size="sm"
+              asChild
+              className={cn(isActive("/students/me/attempts") && "bg-accent text-accent-foreground")}
+            >
+              <Link href={`/${locale}/students/me/attempts`}>
+                <BookOpen className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">My Exams</span>
+              </Link>
+            </Button>
           )}
 
           {/* Role badge */}

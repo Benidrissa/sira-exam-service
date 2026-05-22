@@ -9,10 +9,12 @@ import { Badge } from "@/components/ui/badge";
 import { useParams } from "next/navigation";
 import { toast } from "sonner";
 import { formatError } from "@/lib/formatError";
+import { BackLink } from "@/components/BackLink";
 
 export default function ClassDetailPage() {
   const params = useParams();
   const classId = params.classId as string;
+  const locale = params.locale as string;
   const qc = useQueryClient();
   const [userId, setUserId] = useState("");
   const [enrollError, setEnrollError] = useState<string | null>(null);
@@ -39,6 +41,7 @@ export default function ClassDetailPage() {
 
   return (
     <main className="max-w-3xl mx-auto p-8 space-y-6">
+      <BackLink href={`/${locale}/classes`} label="Classes" />
       <div>
         <h1 className="text-2xl font-bold">{cls.name}</h1>
         <Badge variant="outline">{cls.academic_year}</Badge>
