@@ -285,31 +285,31 @@ async def resolve_complaint(
                 await db.get(ExamBank, test_for_audit.bank_id) if test_for_audit else None
             )
             if bank_for_audit is not None and complaint.question_id is not None:
-                    # Dissertation-level override: record against the DissertationAnswer
-                    da_result = await db.execute(
-                        select(DissertationAnswer).where(
-                            DissertationAnswer.attempt_id == complaint.attempt_id,
-                            DissertationAnswer.question_id == complaint.question_id,
-                        )
+                # Dissertation-level override: record against the DissertationAnswer
+                da_result = await db.execute(
+                    select(DissertationAnswer).where(
+                        DissertationAnswer.attempt_id == complaint.attempt_id,
+                        DissertationAnswer.question_id == complaint.question_id,
                     )
-                    da_for_audit = da_result.scalar_one_or_none()
-                    if da_for_audit is not None:
-                        audit_entry = ReviewAuditLog(
-                            answer_id=da_for_audit.id,
-                            attempt_id=complaint.attempt_id,
-                            test_id=attempt_for_audit.test_id,
-                            org_id=bank_for_audit.org_id,
-                            actor_id=resolved_by,
-                            actor_role="teacher",
-                            action="complaint_resolved",
-                            old_values={"human_score": da_for_audit.human_score},
-                            new_values={
-                                "human_score": score_override,
-                                "complaint_id": str(complaint.id),
-                                "review_note": review_note,
-                            },
-                        )
-                        db.add(audit_entry)
+                )
+                da_for_audit = da_result.scalar_one_or_none()
+                if da_for_audit is not None:
+                    audit_entry = ReviewAuditLog(
+                        answer_id=da_for_audit.id,
+                        attempt_id=complaint.attempt_id,
+                        test_id=attempt_for_audit.test_id,
+                        org_id=bank_for_audit.org_id,
+                        actor_id=resolved_by,
+                        actor_role="teacher",
+                        action="complaint_resolved",
+                        old_values={"human_score": da_for_audit.human_score},
+                        new_values={
+                            "human_score": score_override,
+                            "complaint_id": str(complaint.id),
+                            "review_note": review_note,
+                        },
+                    )
+                    db.add(audit_entry)
 
     await db.commit()
     await db.refresh(complaint)
