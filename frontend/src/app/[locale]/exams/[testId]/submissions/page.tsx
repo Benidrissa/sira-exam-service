@@ -15,6 +15,9 @@ import { toast } from "sonner";
 import { formatError } from "@/lib/formatError";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { Select } from "@/components/ui/select";
+import { usePaginatedList } from "@/hooks/usePaginatedList";
+import { PaginationControls } from "@/components/PaginationControls";
 
 // ─── Grouping helpers ─────────────────────────────────────────────────────────
 type ClassGroup = {
@@ -49,6 +52,8 @@ function statusBadge(s: string) {
 }
 
 // ─── Class group accordion ────────────────────────────────────────────────────
+const SUBMISSIONS_PAGE_SIZE = 20;
+
 function ClassSection({
   group, locale, testId, selected, toggle, validateMutation,
 }: {
@@ -59,6 +64,9 @@ function ClassSection({
   const isArchived = !!group.class_archived_at;
   const [open, setOpen] = useState(!isArchived);
   const label = group.class_name ?? "Unclassified";
+  const [sPage, setSPage] = useState(1);
+  const totalPages = Math.max(1, Math.ceil(group.attempts.length / SUBMISSIONS_PAGE_SIZE));
+  const pagedAttempts = group.attempts.slice((sPage - 1) * SUBMISSIONS_PAGE_SIZE, sPage * SUBMISSIONS_PAGE_SIZE);
 
   return (
     <div className={`border rounded-lg ${isArchived ? "opacity-60" : ""}`}>
@@ -85,7 +93,7 @@ function ClassSection({
 
       {open && (
         <div className="border-t space-y-2 p-3">
-          {group.attempts.map((s) => (
+          {pagedAttempts.map((s) => (
             <Card key={s.attempt_id} className={selected.has(s.attempt_id) ? "ring-2 ring-primary" : ""}>
               <CardContent className="flex items-center gap-4 py-3">
                 <input type="checkbox" checked={selected.has(s.attempt_id)}
@@ -118,6 +126,12 @@ function ClassSection({
               </CardContent>
             </Card>
           ))}
+          {group.attempts.length > SUBMISSIONS_PAGE_SIZE && (
+            <div className="pt-2">
+              <PaginationControls currentPage={sPage} totalPages={totalPages}
+                totalItems={group.attempts.length} pageSize={SUBMISSIONS_PAGE_SIZE} onPageChange={setSPage} />
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -176,11 +190,47 @@ export default function SubmissionsPage() {
     setSelected(next);
   };
 
-  const groups = groupByClass(submissions ?? []);
+  // Filter submissions before grouping
+  const { page: filteredSubs, total: filteredTotal, filters: subFilters, setFilter: setSubFilter } =
+    usePaginatedList<AttemptSubmissionSummary>(submissions ?? [], {
+      pageSize: 999, // grouping handles visual chunking; pagination is per-group in ClassSection
+      filterFn: (s, f) => {
+        const matchSearch = !f.search || s.user_id.includes(f.search);
+        const matchStatus = !f.status || s.validation_status === f.status;
+        return matchSearch && matchStatus;
+      },
+    });
+
+  const groups = groupByClass(filteredSubs);
 
   return (
     <main className="max-w-5xl mx-auto p-8 space-y-4">
       <h1 className="text-2xl font-bold">Student Submissions</h1>
+
+      {/* Filter bar */}
+      {(submissions ?? []).length > 0 && (
+        <div className="flex flex-col sm:flex-row gap-3">
+          <Input
+            placeholder="Search by student ID…"
+            value={subFilters.search}
+            onChange={e => setSubFilter("search", e.target.value)}
+            className="max-w-xs font-mono text-sm"
+          />
+          <Select
+            options={[
+              { value: "pending", label: "Pending" },
+              { value: "validated", label: "Validated" },
+            ]}
+            placeholder="All statuses"
+            value={subFilters.status}
+            onChange={e => setSubFilter("status", e.target.value)}
+            className="w-40"
+          />
+          {(subFilters.search || subFilters.status) && (
+            <span className="self-center text-sm text-muted-foreground">{filteredTotal} result{filteredTotal !== 1 ? "s" : ""}</span>
+          )}
+        </div>
+      )}
 
       {/* Batch controls */}
       {selected.size > 0 && (

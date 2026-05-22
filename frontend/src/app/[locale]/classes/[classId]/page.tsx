@@ -11,6 +11,61 @@ import { toast } from "sonner";
 import { formatError } from "@/lib/formatError";
 import { BackLink } from "@/components/BackLink";
 import { Skeleton } from "@/components/ui/skeleton";
+import { usePaginatedList } from "@/hooks/usePaginatedList";
+import { PaginationControls } from "@/components/PaginationControls";
+
+type Member = { id: string; user_id: string };
+
+function MemberList({ members, onRemove, removePending }: {
+  members: Member[];
+  onRemove: (uid: string) => void;
+  removePending: boolean;
+}) {
+  const { page, total, totalPages, currentPage, setPage, filters, setFilter } =
+    usePaginatedList<Member>(members, {
+      pageSize: 20,
+      filterFn: (m, f) => !f.search || m.user_id.includes(f.search),
+    });
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <CardTitle>Members ({members.length})</CardTitle>
+          {members.length > 5 && (
+            <Input
+              placeholder="Search by UUID…"
+              value={filters.search}
+              onChange={e => setFilter("search", e.target.value)}
+              className="max-w-xs font-mono text-sm h-8"
+            />
+          )}
+        </div>
+      </CardHeader>
+      <CardContent>
+        {members.length === 0
+          ? <p className="text-muted-foreground text-sm">No enrolled students.</p>
+          : (
+            <>
+              {total === 0 && <p className="text-sm text-muted-foreground">No members match your search.</p>}
+              <div className="space-y-2">
+                {page.map(m => (
+                  <div key={m.id} className="flex items-center justify-between py-2 border-b last:border-0">
+                    <p className="font-mono text-sm">{m.user_id}</p>
+                    <Button size="sm" variant="destructive" onClick={() => onRemove(m.user_id)} disabled={removePending}>
+                      Remove
+                    </Button>
+                  </div>
+                ))}
+              </div>
+              <PaginationControls currentPage={currentPage} totalPages={totalPages} totalItems={total} pageSize={20} onPageChange={setPage} />
+            </>
+          )
+        }
+      </CardContent>
+    </Card>
+  );
+}
 
 export default function ClassDetailPage() {
   const params = useParams();
@@ -71,25 +126,12 @@ export default function ClassDetailPage() {
         </CardContent>
       </Card>
 
-      {/* Member list */}
-      <Card>
-        <CardHeader><CardTitle>Members ({cls.members?.length ?? 0})</CardTitle></CardHeader>
-        <CardContent>
-          {cls.members?.length === 0
-            ? <p className="text-muted-foreground text-sm">No enrolled students.</p>
-            : <div className="space-y-2">
-                {cls.members?.map(m => (
-                  <div key={m.id} className="flex items-center justify-between py-2 border-b last:border-0">
-                    <p className="font-mono text-sm">{m.user_id}</p>
-                    <Button size="sm" variant="destructive" onClick={() => removeMutation.mutate(m.user_id)} disabled={removeMutation.isPending}>
-                      Remove
-                    </Button>
-                  </div>
-                ))}
-              </div>
-          }
-        </CardContent>
-      </Card>
+      {/* Member list with search + pagination */}
+      <MemberList
+        members={cls.members ?? []}
+        onRemove={(uid) => removeMutation.mutate(uid)}
+        removePending={removeMutation.isPending}
+      />
     </main>
   );
 }
