@@ -193,9 +193,9 @@ async def test_attempt_creation_assigns_anon_id() -> None:
     #   2. select(ExamAttempt) — guard: no prior submitted attempt
     #   3. select(ExamQuestion) — fetch validated questions
     db.execute.side_effect = [
-        _scalar(test),   # load test
-        _scalar(None),   # no existing attempt
-        _scalars([q]),   # load questions
+        _scalar(test),  # load test
+        _scalar(None),  # no existing attempt
+        _scalars([q]),  # load questions
     ]
 
     created_attempt = ExamAttempt(
