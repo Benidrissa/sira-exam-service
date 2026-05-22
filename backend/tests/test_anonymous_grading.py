@@ -97,8 +97,12 @@ async def test_list_submissions_anonymous_masks_user_id() -> None:
     db = _mock_db()
     test = _make_test(anonymous_grading=True)
     bank = ExamBank(
-        id=BANK_ID, org_id=ORG_A, created_by=TEACHER_ID,
-        title_fr="B", language="fr", passing_score=80.0,
+        id=BANK_ID,
+        org_id=ORG_A,
+        created_by=TEACHER_ID,
+        title_fr="B",
+        language="fr",
+        passing_score=80.0,
     )
     attempt = _make_attempt(STUDENT_A, ANON_A, validation_status="pending")
     attempt.dissertation_answers = []
@@ -110,15 +114,13 @@ async def test_list_submissions_anonymous_masks_user_id() -> None:
         #   2. select(ExamAttempt) — submitted attempts
         #   3. select(TestAssignment) — for class resolution
         # db.get() is called separately for ExamBank (not in side_effect chain)
-        _scalar(test),       # call 1
-        _scalars([attempt]), # call 2
-        _scalars([]),        # call 3 (no assignments)
+        _scalar(test),  # call 1
+        _scalars([attempt]),  # call 2
+        _scalars([]),  # call 3 (no assignments)
     ]
     db.get.return_value = bank
 
-    rows = await exam_submission_service.list_test_submissions(
-        db, test_id=TEST_ID, org_id=ORG_A
-    )
+    rows = await exam_submission_service.list_test_submissions(db, test_id=TEST_ID, org_id=ORG_A)
 
     assert db.execute.call_count == 3, "Expected exactly 3 db.execute calls"
     assert len(rows) == 1
@@ -138,22 +140,24 @@ async def test_list_submissions_non_anonymous_preserves_user_id() -> None:
     db = _mock_db()
     test = _make_test(anonymous_grading=False)
     bank = ExamBank(
-        id=BANK_ID, org_id=ORG_A, created_by=TEACHER_ID,
-        title_fr="B", language="fr", passing_score=80.0,
+        id=BANK_ID,
+        org_id=ORG_A,
+        created_by=TEACHER_ID,
+        title_fr="B",
+        language="fr",
+        passing_score=80.0,
     )
     attempt = _make_attempt(STUDENT_A, ANON_A, validation_status="pending")
     attempt.dissertation_answers = []
 
     db.execute.side_effect = [
-        _scalar(test),       # call 1: _get_test_with_org_guard
-        _scalars([attempt]), # call 2: submitted attempts
-        _scalars([]),        # call 3: TestAssignment (none)
+        _scalar(test),  # call 1: _get_test_with_org_guard
+        _scalars([attempt]),  # call 2: submitted attempts
+        _scalars([]),  # call 3: TestAssignment (none)
     ]
     db.get.return_value = bank
 
-    rows = await exam_submission_service.list_test_submissions(
-        db, test_id=TEST_ID, org_id=ORG_A
-    )
+    rows = await exam_submission_service.list_test_submissions(db, test_id=TEST_ID, org_id=ORG_A)
 
     assert db.execute.call_count == 3, "Expected exactly 3 db.execute calls"
     assert len(rows) == 1
@@ -169,7 +173,7 @@ async def test_list_submissions_non_anonymous_preserves_user_id() -> None:
 async def test_attempt_creation_assigns_anon_id() -> None:
     """AC7 — start_attempt assigns anon_id; stored data is not masked."""
     from app.domain.models.exam import ExamQuestion, QuestionType
-    from app.domain.services.exam_attempt_service import start_exam_attempt
+    from app.domain.services.exam_attempt_service import start_attempt as start_exam_attempt
 
     db = _mock_db()
     test = _make_test(anonymous_grading=True)
@@ -184,18 +188,22 @@ async def test_attempt_creation_assigns_anon_id() -> None:
         validated=True,
     )
 
-    # 1. Check no existing submitted attempt → returns None
-    # 2. Load test
-    # 3. Load questions
+    # Call order inside start_attempt:
+    #   1. select(ExamTest).join(ExamBank) — load test
+    #   2. select(ExamAttempt) — guard: no prior submitted attempt
+    #   3. select(ExamQuestion) — fetch validated questions
     db.execute.side_effect = [
-        _scalar(None),   # no existing attempt
-        _scalar(test),   # load test
-        _scalars([q]),   # load questions
+        _scalar(test),  # load test
+        _scalar(None),  # no existing attempt
+        _scalars([q]),  # load questions
     ]
 
     created_attempt = ExamAttempt(
-        id=uuid.uuid4(), test_id=TEST_ID, user_id=STUDENT_A,
-        anon_id=uuid.uuid4(), question_ids=[str(q.id)],
+        id=uuid.uuid4(),
+        test_id=TEST_ID,
+        user_id=STUDENT_A,
+        anon_id=uuid.uuid4(),
+        question_ids=[str(q.id)],
     )
     db.refresh.side_effect = lambda obj: setattr(obj, "anon_id", created_attempt.anon_id)
 
@@ -222,9 +230,7 @@ async def test_anon_mapping_409_when_unvalidated_exists() -> None:
     db.scalar.return_value = 1  # 1 unvalidated attempt
 
     with pytest.raises(HTTPException) as exc:
-        await exam_submission_service.get_anon_mapping(
-            db, test_id=TEST_ID, org_id=ORG_A
-        )
+        await exam_submission_service.get_anon_mapping(db, test_id=TEST_ID, org_id=ORG_A)
 
     assert exc.value.status_code == 409
     assert "unvalidated" in exc.value.detail.lower()
@@ -250,14 +256,12 @@ async def test_anon_mapping_returns_mapping_when_all_validated() -> None:
     row_b.user_id = STUDENT_B
 
     db.execute.side_effect = [
-        _scalar(test),      # _get_test_with_org_guard
+        _scalar(test),  # _get_test_with_org_guard
         _rows([row_a, row_b]),  # SELECT anon_id, user_id
     ]
     db.scalar.return_value = 0  # no unvalidated attempts
 
-    result = await exam_submission_service.get_anon_mapping(
-        db, test_id=TEST_ID, org_id=ORG_A
-    )
+    result = await exam_submission_service.get_anon_mapping(db, test_id=TEST_ID, org_id=ORG_A)
 
     assert len(result) == 2
     ids = {r["anon_id"]: r["user_id"] for r in result}
