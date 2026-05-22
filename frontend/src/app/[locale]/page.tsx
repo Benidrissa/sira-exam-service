@@ -76,6 +76,18 @@ function TeacherDashboard({ locale }: { locale: string }) {
     queryFn: listExamBanks,
   });
 
+  // Hook must be called unconditionally before any conditional returns
+  const allBanks = banks ?? [];
+  const { page, total, totalPages, currentPage, setPage, filters, setFilter } =
+    usePaginatedList<ExamBankType>(allBanks, {
+      pageSize: 10,
+      filterFn: (b, f) => {
+        const matchSearch = !f.search || b.title_fr.toLowerCase().includes(f.search.toLowerCase());
+        const matchStatus = !f.status || b.status === f.status;
+        return matchSearch && matchStatus;
+      },
+    });
+
   if (isLoading) {
     return (
       <div className="space-y-4">
@@ -105,17 +117,6 @@ function TeacherDashboard({ locale }: { locale: string }) {
       </Alert>
     );
   }
-
-  const allBanks = banks ?? [];
-  const { page, total, totalPages, currentPage, setPage, filters, setFilter } =
-    usePaginatedList<ExamBankType>(allBanks, {
-      pageSize: 10,
-      filterFn: (b, f) => {
-        const matchSearch = !f.search || b.title_fr.toLowerCase().includes(f.search.toLowerCase());
-        const matchStatus = !f.status || b.status === f.status;
-        return matchSearch && matchStatus;
-      },
-    });
 
   return (
     <div className="space-y-6">

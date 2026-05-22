@@ -53,6 +53,14 @@ function TeacherGradingView({ testId, locale }: { testId: string; locale: string
     staleTime: 10_000,
   });
 
+  // Hook called unconditionally before any conditional returns
+  const { page: gradingPage, total: gradingTotal, totalPages: gradingTotalPages,
+    currentPage: gradingCurrentPage, setPage: setGradingPage, filters: gradingFilters, setFilter: setGradingFilter } =
+    usePaginatedList<DissertationAnswer>(answers ?? [], {
+      pageSize: 10,
+      filterFn: (a, f) => !f.status || a.status === f.status,
+    });
+
   if (isLoading) return (
     <main className="max-w-3xl mx-auto p-8 space-y-6">
       <Skeleton className="h-8 w-56" />
@@ -68,14 +76,6 @@ function TeacherGradingView({ testId, locale }: { testId: string; locale: string
       </Button>
     </div>
   );
-
-  // eslint-disable-next-line react-hooks/rules-of-hooks
-  const { page: gradingPage, total: gradingTotal, totalPages: gradingTotalPages,
-    currentPage: gradingCurrentPage, setPage: setGradingPage, filters: gradingFilters, setFilter: setGradingFilter } =
-    usePaginatedList<DissertationAnswer>(answers, {
-      pageSize: 10,
-      filterFn: (a, f) => !f.status || a.status === f.status,
-    });
 
   return (
     <main className="max-w-3xl mx-auto p-8 space-y-6">
