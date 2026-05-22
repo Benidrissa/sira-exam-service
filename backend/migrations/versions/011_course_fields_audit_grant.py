@@ -118,9 +118,7 @@ def upgrade() -> None:
     op.create_index(
         "ix_review_audit_logs_test_id", "review_audit_logs", ["test_id"], schema=_SCHEMA
     )
-    op.create_index(
-        "ix_review_audit_logs_org_id", "review_audit_logs", ["org_id"], schema=_SCHEMA
-    )
+    op.create_index("ix_review_audit_logs_org_id", "review_audit_logs", ["org_id"], schema=_SCHEMA)
 
 
 def downgrade() -> None:
