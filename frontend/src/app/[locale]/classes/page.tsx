@@ -10,6 +10,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { Archive, ArchiveRestore } from "lucide-react";
+import { toast } from "sonner";
+import { formatError } from "@/lib/formatError";
 
 function getRoleFromCookie(): string | null {
   if (typeof document === "undefined") return null;
@@ -39,21 +41,21 @@ export default function ClassesPage() {
     mutationFn: () => createSchoolClass({ name, academic_year: year }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["school-classes"] });
-      setName("");
-      setYear("");
-      setCreateError(null);
+      setName(""); setYear(""); setCreateError(null);
+      toast.success("Class created");
     },
-    onError: (e) => setCreateError(String(e)),
+    onError: (e) => { const msg = formatError(e); setCreateError(msg); toast.error(msg); },
   });
 
   const archiveMutation = useMutation({
     mutationFn: ({ classId, archive }: { classId: string; archive: boolean }) =>
       updateClass(classId, { archive }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["school-classes"] }),
+    onSuccess: (_r, { archive }) => { qc.invalidateQueries({ queryKey: ["school-classes"] }); toast.success(archive ? "Class archived" : "Class unarchived"); },
+    onError: (e) => toast.error(formatError(e)),
   });
 
   if (isLoading) return <div className="p-8">Loading…</div>;
-  if (error) return <p className="p-8 text-destructive">{String(error)}</p>;
+  if (error) return <p className="p-8 text-destructive">{formatError(error)}</p>;
 
   return (
     <main className="max-w-4xl mx-auto p-8 space-y-6">

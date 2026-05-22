@@ -7,6 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useParams } from "next/navigation";
+import { toast } from "sonner";
+import { formatError } from "@/lib/formatError";
 
 export default function ClassDetailPage() {
   const params = useParams();
@@ -22,17 +24,18 @@ export default function ClassDetailPage() {
 
   const enrollMutation = useMutation({
     mutationFn: () => enrollStudent(classId, userId),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["school-class", classId] }); setUserId(""); setEnrollError(null); },
-    onError: (e) => setEnrollError(String(e)),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["school-class", classId] }); setUserId(""); setEnrollError(null); toast.success("Student enrolled"); },
+    onError: (e) => { const msg = formatError(e); setEnrollError(msg); toast.error(msg); },
   });
 
   const removeMutation = useMutation({
     mutationFn: (uid: string) => removeMember(classId, uid),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["school-class", classId] }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["school-class", classId] }); toast.success("Student removed"); },
+    onError: (e) => toast.error(formatError(e)),
   });
 
   if (isLoading) return <div className="p-8">Loading…</div>;
-  if (error || !cls) return <p className="p-8 text-destructive">{String(error)}</p>;
+  if (error || !cls) return <p className="p-8 text-destructive">{formatError(error)}</p>;
 
   return (
     <main className="max-w-3xl mx-auto p-8 space-y-6">

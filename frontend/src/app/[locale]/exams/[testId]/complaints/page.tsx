@@ -9,6 +9,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { useParams } from "next/navigation";
+import { toast } from "sonner";
+import { formatError } from "@/lib/formatError";
 
 function ResolutionForm({ complaint, onDone }: { complaint: ScoreComplaint; onDone: () => void }) {
   const qc = useQueryClient();
@@ -24,7 +26,8 @@ function ResolutionForm({ complaint, onDone }: { complaint: ScoreComplaint; onDo
       review_note: note || undefined,
       score_override: score ? parseFloat(score) : undefined,
     }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["test-complaints", testId] }); onDone(); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["test-complaints", testId] }); onDone(); toast.success("Complaint resolved"); },
+    onError: (e) => toast.error(formatError(e)),
   });
 
   return (
@@ -58,7 +61,7 @@ export default function TestComplaintsPage() {
   });
 
   if (isLoading) return <div className="p-8">Loading…</div>;
-  if (error) return <p className="p-8 text-destructive">{String(error)}</p>;
+  if (error) return <p className="p-8 text-destructive">{formatError(error)}</p>;
 
   const badgeColor = (s: ComplaintStatus) =>
     s === "approved" ? "bg-green-100 text-green-700" : s === "rejected" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700";

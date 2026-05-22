@@ -11,6 +11,8 @@ import { AuditLogPanel } from "@/components/AuditLogPanel";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ChevronDown, ChevronRight, Archive } from "lucide-react";
+import { toast } from "sonner";
+import { formatError } from "@/lib/formatError";
 
 // ─── Grouping helpers ─────────────────────────────────────────────────────────
 type ClassGroup = {
@@ -144,18 +146,21 @@ export default function SubmissionsPage() {
     onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ["submissions", testId] });
       setSelected(new Set());
-      setBatchMsg(`Validated ${res.validated_count} attempt(s).${res.errors.length ? ` ${res.errors.length} error(s).` : ""}`);
+      const msg = `Validated ${res.validated_count} attempt(s).${res.errors.length ? ` ${res.errors.length} skipped.` : ""}`;
+      setBatchMsg(msg);
+      toast.success(msg);
     },
-    onError: (e) => setBatchMsg(`Error: ${String(e)}`),
+    onError: (e) => { const msg = formatError(e); setBatchMsg(msg); toast.error(msg); },
   });
 
   const validateMutation = useMutation({
     mutationFn: (attemptId: string) => validateAttempt(attemptId),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["submissions", testId] }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["submissions", testId] }); toast.success("Attempt validated"); },
+    onError: (e) => toast.error(formatError(e)),
   });
 
   if (isLoading) return <div className="p-8">Loading…</div>;
-  if (error) return <p className="p-8 text-destructive">{String(error)}</p>;
+  if (error) return <p className="p-8 text-destructive">{formatError(error)}</p>;
 
   const toggle = (id: string) => {
     const next = new Set(selected);
