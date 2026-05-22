@@ -176,6 +176,17 @@ export default function SubmissionsPage() {
     onError: (e) => toast.error(formatError(e)),
   });
 
+  // Hook called unconditionally before any conditional returns
+  const { page: filteredSubs, total: filteredTotal, filters: subFilters, setFilter: setSubFilter } =
+    usePaginatedList<AttemptSubmissionSummary>(submissions ?? [], {
+      pageSize: 999, // grouping handles visual chunking; pagination is per-group in ClassSection
+      filterFn: (s, f) => {
+        const matchSearch = !f.search || s.user_id.includes(f.search);
+        const matchStatus = !f.status || s.validation_status === f.status;
+        return matchSearch && matchStatus;
+      },
+    });
+
   if (isLoading) return (
     <main className="max-w-5xl mx-auto p-8 space-y-4">
       <Skeleton className="h-8 w-56" />
@@ -189,17 +200,6 @@ export default function SubmissionsPage() {
     next.has(id) ? next.delete(id) : next.add(id);
     setSelected(next);
   };
-
-  // Filter submissions before grouping
-  const { page: filteredSubs, total: filteredTotal, filters: subFilters, setFilter: setSubFilter } =
-    usePaginatedList<AttemptSubmissionSummary>(submissions ?? [], {
-      pageSize: 999, // grouping handles visual chunking; pagination is per-group in ClassSection
-      filterFn: (s, f) => {
-        const matchSearch = !f.search || s.user_id.includes(f.search);
-        const matchStatus = !f.status || s.validation_status === f.status;
-        return matchSearch && matchStatus;
-      },
-    });
 
   const groups = groupByClass(filteredSubs);
 
