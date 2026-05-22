@@ -6,6 +6,10 @@ import { listActiveSessions } from "@/lib/api";
 import type { SessionSummary } from "@/types/exam";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatError } from "@/lib/formatError";
+import { usePaginatedList } from "@/hooks/usePaginatedList";
+import { PaginationControls } from "@/components/PaginationControls";
+import { Select } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -103,6 +107,8 @@ function SessionCard({ session }: { session: SessionSummary }) {
 // ---------------------------------------------------------------------------
 // Dashboard
 // ---------------------------------------------------------------------------
+const PROCTOR_PAGE_SIZE = 12;
+
 export default function ProctorDashboardPage() {
   const { data: sessions, isLoading, isError, error } = useQuery({
     queryKey: ["proctor-sessions"],
@@ -110,22 +116,57 @@ export default function ProctorDashboardPage() {
     refetchInterval: 5_000,
   });
 
+  const { page, total, totalPages, currentPage, setPage, filters, setFilter } =
+    usePaginatedList<SessionSummary>(sessions ?? [], {
+      pageSize: PROCTOR_PAGE_SIZE,
+      filterFn: (s, f) => {
+        const matchStatus = !f.status || s.status === f.status;
+        const matchSearch = !f.search || s.id.includes(f.search) || s.user_id.includes(f.search);
+        return matchStatus && matchSearch;
+      },
+    });
+
   return (
     <main className="max-w-7xl mx-auto p-6 space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold">Proctor Dashboard</h1>
           <p className="text-sm text-gray-500 mt-0.5">
             Live sessions — refreshes every 5 seconds
           </p>
         </div>
-        {sessions && (
-          <div className="flex items-center gap-2">
-            <span className="h-2 w-2 rounded-full bg-green-400 animate-pulse" />
-            <span className="text-sm text-gray-600">{sessions.length} active</span>
-          </div>
-        )}
+        <div className="flex items-center gap-2 flex-wrap">
+          {sessions && sessions.length > 0 && (
+            <>
+              <Input
+                placeholder="Search session/student ID…"
+                value={filters.search}
+                onChange={e => setFilter("search", e.target.value)}
+                className="max-w-48 font-mono text-sm h-8"
+              />
+              <Select
+                options={[
+                  { value: "active", label: "Active" },
+                  { value: "disconnected", label: "Disconnected" },
+                  { value: "terminated", label: "Terminated" },
+                  { value: "expired", label: "Expired" },
+                  { value: "completed", label: "Completed" },
+                ]}
+                placeholder="All statuses"
+                value={filters.status}
+                onChange={e => setFilter("status", e.target.value)}
+                className="w-40 h-8 text-sm"
+              />
+            </>
+          )}
+          {sessions && (
+            <div className="flex items-center gap-2">
+              <span className="h-2 w-2 rounded-full bg-green-400 animate-pulse" />
+              <span className="text-sm text-gray-600">{sessions.length} total</span>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* States */}
@@ -146,14 +187,20 @@ export default function ProctorDashboardPage() {
         </div>
       )}
 
-      {/* Session grid — sorted by unacked alerts descending */}
-      {sessions && sessions.length > 0 && (
+      {sessions && total === 0 && sessions.length > 0 && (
+        <p className="text-sm text-muted-foreground py-4">No sessions match your filters.</p>
+      )}
+
+      {/* Session grid — sorted by unacked alerts descending, paginated */}
+      {page.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {[...sessions].sort((a, b) => (b.unacked_alert_count ?? 0) - (a.unacked_alert_count ?? 0)).map((s) => (
+          {[...page].sort((a, b) => (b.unacked_alert_count ?? 0) - (a.unacked_alert_count ?? 0)).map((s) => (
             <SessionCard key={s.id} session={s} />
           ))}
         </div>
       )}
+
+      <PaginationControls currentPage={currentPage} totalPages={totalPages} totalItems={total} pageSize={PROCTOR_PAGE_SIZE} onPageChange={setPage} />
     </main>
   );
 }

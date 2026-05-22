@@ -3,6 +3,7 @@ import { getMessages } from "next-intl/server";
 import { notFound } from "next/navigation";
 import { Providers } from "@/providers";
 import { NavBar } from "@/components/NavBar";
+import { Breadcrumbs } from "@/components/Breadcrumbs";
 import { Toaster } from "sonner";
 
 const locales = ["fr", "en"];
@@ -24,6 +25,7 @@ export default async function LocaleLayout({
       <Providers>
         <div className="min-h-screen bg-background">
           <NavBar />
+          <Breadcrumbs />
           {children}
           <Toaster richColors position="top-right" />
         </div>

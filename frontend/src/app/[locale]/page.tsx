@@ -26,6 +26,10 @@ import {
   CheckCircle,
   ClipboardList,
 } from "lucide-react";
+import { usePaginatedList } from "@/hooks/usePaginatedList";
+import { PaginationControls } from "@/components/PaginationControls";
+import { Select } from "@/components/ui/select";
+import type { ExamBank as ExamBankType } from "@/types/exam";
 
 /* ── helpers ────────────────────────────────────────────────── */
 
@@ -102,8 +106,16 @@ function TeacherDashboard({ locale }: { locale: string }) {
     );
   }
 
-  const active = banks?.filter((b) => b.status !== "archived") ?? [];
-  const archived = banks?.filter((b) => b.status === "archived") ?? [];
+  const allBanks = banks ?? [];
+  const { page, total, totalPages, currentPage, setPage, filters, setFilter } =
+    usePaginatedList<ExamBankType>(allBanks, {
+      pageSize: 10,
+      filterFn: (b, f) => {
+        const matchSearch = !f.search || b.title_fr.toLowerCase().includes(f.search.toLowerCase());
+        const matchStatus = !f.status || b.status === f.status;
+        return matchSearch && matchStatus;
+      },
+    });
 
   return (
     <div className="space-y-6">
@@ -111,12 +123,7 @@ function TeacherDashboard({ locale }: { locale: string }) {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">My Exam Banks</h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">
-            {active.length} active {active.length === 1 ? "bank" : "banks"}
-            {banks && banks.length > active.length
-              ? ` · ${archived.length} archived`
-              : ""}
-          </p>
+          <p className="mt-0.5 text-sm text-muted-foreground">{allBanks.length} bank{allBanks.length !== 1 ? "s" : ""} total</p>
         </div>
         <Button asChild variant="default">
           <Link href={`/${locale}/create`}>
@@ -126,8 +133,31 @@ function TeacherDashboard({ locale }: { locale: string }) {
         </Button>
       </div>
 
+      {/* Filter bar */}
+      <div className="flex flex-col sm:flex-row gap-3">
+        <Input
+          placeholder="Search by title…"
+          value={filters.search}
+          onChange={(e) => setFilter("search", e.target.value)}
+          className="max-w-xs"
+        />
+        <Select
+          options={[
+            { value: "draft", label: "Draft" },
+            { value: "generating", label: "Generating" },
+            { value: "review", label: "Review" },
+            { value: "published", label: "Published" },
+            { value: "archived", label: "Archived" },
+          ]}
+          placeholder="All statuses"
+          value={filters.status}
+          onChange={(e) => setFilter("status", e.target.value)}
+          className="w-44"
+        />
+      </div>
+
       {/* Empty state */}
-      {active.length === 0 && (
+      {allBanks.length === 0 && (
         <Card className="border-2 border-dashed border-border bg-transparent shadow-none py-12">
           <CardContent className="flex flex-col items-center gap-4 text-center pt-0">
             <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-muted">
@@ -135,42 +165,29 @@ function TeacherDashboard({ locale }: { locale: string }) {
             </div>
             <div>
               <h3 className="text-base font-semibold">No exam banks yet</h3>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Create your first exam bank to get started
-              </p>
+              <p className="mt-1 text-sm text-muted-foreground">Create your first exam bank to get started</p>
             </div>
             <Button asChild variant="default">
-              <Link href={`/${locale}/create`}>
-                <Plus />
-                New Exam
-              </Link>
+              <Link href={`/${locale}/create`}><Plus />New Exam</Link>
             </Button>
           </CardContent>
         </Card>
       )}
 
-      {/* Active banks */}
-      {active.length > 0 && (
+      {allBanks.length > 0 && total === 0 && (
+        <p className="text-sm text-muted-foreground">No banks match your filters.</p>
+      )}
+
+      {/* Paginated list */}
+      {page.length > 0 && (
         <div className="space-y-3">
-          {active.map((bank) => (
+          {page.map((bank) => (
             <BankCard key={bank.id} bank={bank} locale={locale} />
           ))}
         </div>
       )}
 
-      {/* Archived banks */}
-      {archived.length > 0 && (
-        <details className="mt-4">
-          <summary className="cursor-pointer select-none text-sm font-medium text-muted-foreground hover:text-foreground">
-            Show {archived.length} archived
-          </summary>
-          <div className="mt-3 space-y-3">
-            {archived.map((bank) => (
-              <BankCard key={bank.id} bank={bank} locale={locale} />
-            ))}
-          </div>
-        </details>
-      )}
+      <PaginationControls currentPage={currentPage} totalPages={totalPages} totalItems={total} pageSize={10} onPageChange={setPage} />
     </div>
   );
 }
