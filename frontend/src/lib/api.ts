@@ -426,6 +426,12 @@ export const removeMember = (classId: string, userId: string) =>
   apiFetch<void>(`/exam/classes/${classId}/members/${userId}`, { method: "DELETE" });
 
 // ---------------------------------------------------------------------------
+// Phase 4 — SchoolClass list (for assignment class picker)
+// ---------------------------------------------------------------------------
+export const listClasses = () =>
+  apiFetch<SchoolClass[]>("/exam/classes");
+
+// ---------------------------------------------------------------------------
 // Phase 4 — TestAssignment
 // ---------------------------------------------------------------------------
 export const createAssignment = (testId: string, data: { class_id: string; released_at: string; closes_at: string; quarter: Quarter }) =>
@@ -433,6 +439,9 @@ export const createAssignment = (testId: string, data: { class_id: string; relea
 
 export const listAssignments = (testId: string) =>
   apiFetch<TestAssignment[]>(`/exam/tests/${testId}/assignments`);
+
+export const updateAssignment = (testId: string, assignmentId: string, data: { released_at?: string; closes_at?: string; quarter?: Quarter }) =>
+  apiFetch<TestAssignment>(`/exam/tests/${testId}/assignments/${assignmentId}`, { method: "PATCH", body: JSON.stringify(data) });
 
 export const deleteAssignment = (testId: string, assignmentId: string) =>
   apiFetch<void>(`/exam/tests/${testId}/assignments/${assignmentId}`, { method: "DELETE" });

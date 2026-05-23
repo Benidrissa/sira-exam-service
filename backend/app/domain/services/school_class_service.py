@@ -244,6 +244,22 @@ async def create_assignment(
     # Verify class belongs to org
     await get_class(db, class_id=class_id, org_id=org_id)
 
+    # Guard: no overlapping window for this class
+    conflict = await db.scalar(
+        select(TestAssignment.id)
+        .where(
+            TestAssignment.class_id == class_id,
+            TestAssignment.released_at < closes_at,
+            TestAssignment.closes_at > released_at,
+        )
+        .limit(1)
+    )
+    if conflict:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This class already has a test scheduled during that window.",
+        )
+
     assignment = TestAssignment(
         test_id=test_id,
         class_id=class_id,
@@ -312,6 +328,23 @@ async def update_assignment(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="closes_at must be after released_at",
+        )
+
+    # Guard: no overlapping window for this class (excluding self)
+    conflict = await db.scalar(
+        select(TestAssignment.id)
+        .where(
+            TestAssignment.class_id == assignment.class_id,
+            TestAssignment.id != assignment.id,
+            TestAssignment.released_at < new_closes_at,
+            TestAssignment.closes_at > new_released_at,
+        )
+        .limit(1)
+    )
+    if conflict:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Updated window would overlap with another scheduled test for this class.",
         )
 
     if released_at is not None:

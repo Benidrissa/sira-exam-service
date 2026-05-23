@@ -267,6 +267,11 @@ function BankCard({ bank, locale }: { bank: ExamBank; locale: string }) {
                   </Link>
                 </Button>
                 <Button variant="outline" size="sm" asChild disabled={!testId}>
+                  <Link href={testId ? `/${locale}/exams/${testId}/assignments` : "#"}>
+                    Schedule
+                  </Link>
+                </Button>
+                <Button variant="outline" size="sm" asChild disabled={!testId}>
                   <Link href={testId ? `/${locale}/exams/${testId}/results` : "#"}>
                     Grading
                   </Link>
