@@ -707,3 +707,30 @@
 - [ ] AC6: Student's own attempt flow (start, submit, review) is unaffected by the anonymous_grading flag
 
 ### Linked FRs: FR-4.24
+
+---
+
+## US-24: Student Sees Scheduled Exams on Homepage
+
+**As a** Student
+**I want to** see my class's scheduled exams on my homepage
+**So that** I know which exams are open and can start them without needing a separate link
+
+### Preconditions
+- Student is a ClassMember of at least one SchoolClass (FR-4.3)
+- A teacher has created a TestAssignment with `released_at ≤ now ≤ closes_at` for that class (FR-4.4)
+
+### Steps
+1. Teacher assigns a published test to a class with an open window (FR-4.4)
+2. Student logs in → homepage shows the exam card with class name, quarter, closes_at
+3. Student clicks "Start Exam" → navigates to `/{locale}/exams/{testId}/play`
+4. Student submits → returns to homepage; card now shows "View Results"
+5. Student with no class memberships → sees empty state "No exams are currently scheduled for your classes."
+
+### Acceptance Criteria
+- [ ] AC1: Card appears only within `released_at`–`closes_at` window
+- [ ] AC2: Empty state when no exams scheduled
+- [ ] AC3: Submitted attempt flips CTA to "View Results" linking to `/attempts/{attemptId}/review`
+- [ ] AC4: No paste-link input on student homepage
+
+### Linked FRs: FR-4.25, FR-4.5, FR-4.6
