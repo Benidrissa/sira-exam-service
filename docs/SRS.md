@@ -709,6 +709,25 @@ Endpoints: GET queue, GET session, GET snapshots (presigned URLs), POST acknowle
 
 ---
 
+### FR-4.25: Student Scheduled Exam Dashboard (Frontend)
+**GitHub Issue:** #175
+**Priority:** P1
+
+- FR-4.25.1: The student homepage replaces the "paste test link" input with a list sourced from `GET /api/v1/exam/student/tests`.
+- FR-4.25.2: Each exam card displays: `test_title`, `bank_subject`, `class_name`, `academic_year`, `quarter`, and `closes_at`.
+- FR-4.25.3: If `!has_attempted`: card shows "Start Exam" → navigates to `/{locale}/exams/{testId}/play`.
+- FR-4.25.4: If `has_attempted`: card shows "View Results" → navigates to `/{locale}/attempts/{attemptId}/review`.
+- FR-4.25.5: Empty state when no open assignments exist: "No exams are currently scheduled for your classes."
+- FR-4.25.6: The direct test-ID / paste-link entry point is removed from the student homepage.
+
+**Acceptance Criteria:**
+- AC1: Open scheduled exam for enrolled student → appears on homepage
+- AC2: No open exams → empty-state message rendered
+- AC3: `has_attempted=true` → "View Results" shown, not "Start Exam"
+- AC4: Paste-link input absent from DOM
+
+---
+
 ## 7. Non-Functional Requirements
 
 ### 5.1 Performance
