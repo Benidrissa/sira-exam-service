@@ -2,10 +2,10 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { listExamBanks, listBankTests } from "@/lib/api";
-import type { ExamBank, BankStatus } from "@/types/exam";
+import { listExamBanks, listBankTests, listStudentTests } from "@/lib/api";
+import type { ExamBank, BankStatus, StudentTestSummary } from "@/types/exam";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -25,6 +25,7 @@ import {
   AlertCircle,
   CheckCircle,
   ClipboardList,
+  Clock,
 } from "lucide-react";
 import { usePaginatedList } from "@/hooks/usePaginatedList";
 import { PaginationControls } from "@/components/PaginationControls";
@@ -316,74 +317,78 @@ function BankCard({ bank, locale }: { bank: ExamBank; locale: string }) {
 /* ── student view ───────────────────────────────────────────── */
 
 function StudentDashboard({ locale }: { locale: string }) {
-  const router = useRouter();
-  const [testInput, setTestInput] = useState("");
-  const [error, setError] = useState("");
-
-  function handleStart() {
-    const input = testInput.trim();
-    if (!input) {
-      setError("Please enter a test ID or exam link.");
-      return;
-    }
-    const uuidMatch = input.match(
-      /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
-    );
-    if (uuidMatch) {
-      router.push(`/${locale}/exams/${uuidMatch[0]}/play`);
-    } else {
-      setError("Could not find a valid test ID. Try pasting the full exam link.");
-    }
-  }
+  const { data: exams, isLoading } = useQuery({
+    queryKey: ["student-tests"],
+    queryFn: listStudentTests,
+  });
 
   return (
     <div className="flex justify-center mt-16">
-      <Card className="w-full max-w-sm mx-auto">
-        <CardHeader className="items-center text-center gap-2">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10">
-            <GraduationCap className="h-6 w-6 text-primary" style={{ width: 48, height: 48 }} />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold">Take an Exam</h1>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            Enter your test link or ID
-          </p>
-        </CardHeader>
+      <div className="w-full max-w-lg mx-auto space-y-4">
+        <h1 className="text-xl font-bold text-center flex items-center justify-center gap-2">
+          <GraduationCap className="h-5 w-5" />
+          My Scheduled Exams
+        </h1>
 
-        <CardContent className="space-y-3">
-          <div className="flex gap-2">
-            <Input
-              type="text"
-              value={testInput}
-              onChange={(e) => {
-                setTestInput(e.target.value);
-                setError("");
-              }}
-              onKeyDown={(e) => e.key === "Enter" && handleStart()}
-              placeholder="Paste test ID or link…"
-              className={cn(error && "border-destructive focus-visible:ring-destructive/30")}
-            />
-            <Button onClick={handleStart}>Go →</Button>
-          </div>
-          {error && (
-            <p className="text-xs text-destructive">{error}</p>
-          )}
-        </CardContent>
+        {isLoading && (
+          <p className="text-center text-muted-foreground text-sm">Loading…</p>
+        )}
 
-        <CardFooter className="flex-col gap-3">
-          <Button variant="outline" size="sm" className="w-full" asChild>
-            <Link href={`/${locale}/students/me/attempts`}>
-              <ClipboardList className="h-3.5 w-3.5" />
-              My Exam History
+        {!isLoading && (!exams || exams.length === 0) && (
+          <Card>
+            <CardContent className="py-10 text-center text-muted-foreground text-sm">
+              No exams are currently scheduled for your classes.
+            </CardContent>
+          </Card>
+        )}
+
+        {exams?.map((exam) => (
+          <ExamScheduleCard key={exam.test_id} exam={exam} locale={locale} />
+        ))}
+
+        <Button variant="outline" size="sm" className="w-full" asChild>
+          <Link href={`/${locale}/students/me/attempts`}>
+            <ClipboardList className="h-3.5 w-3.5 mr-1" />
+            My Exam History
+          </Link>
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function ExamScheduleCard({ exam, locale }: { exam: StudentTestSummary; locale: string }) {
+  const closes = new Date(exam.closes_at);
+  const quarterLabel = exam.quarter?.toUpperCase() ?? "—";
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base">{exam.test_title}</CardTitle>
+        <p className="text-sm text-muted-foreground">
+          {exam.class_name} · {exam.academic_year} · {quarterLabel}
+        </p>
+      </CardHeader>
+      <CardContent className="flex items-center justify-between gap-4">
+        <p className="text-xs text-muted-foreground flex items-center gap-1">
+          <Clock className="h-3 w-3" />
+          Closes {closes.toLocaleString()}
+        </p>
+        {exam.has_attempted ? (
+          <Button size="sm" variant="outline" asChild>
+            <Link href={`/${locale}/attempts/${exam.attempt_id}/review`}>
+              View Results
             </Link>
           </Button>
-          <p className="text-xs text-muted-foreground text-center w-full">
-            Or paste a test link above to start a new exam.
-          </p>
-        </CardFooter>
-      </Card>
-    </div>
+        ) : (
+          <Button size="sm" asChild>
+            <Link href={`/${locale}/exams/${exam.test_id}/play`}>
+              Start Exam
+            </Link>
+          </Button>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
