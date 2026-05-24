@@ -366,7 +366,7 @@ function ExamScheduleCard({ exam, locale }: { exam: StudentTestSummary; locale: 
       <CardHeader className="pb-2">
         <CardTitle className="text-base">{exam.test_title}</CardTitle>
         <p className="text-sm text-muted-foreground">
-          {exam.class_name} · {exam.academic_year} · {quarterLabel}
+          {exam.bank_subject && `${exam.bank_subject} · `}{exam.class_name} · {exam.academic_year} · {quarterLabel}
         </p>
       </CardHeader>
       <CardContent className="flex items-center justify-between gap-4">
@@ -376,7 +376,7 @@ function ExamScheduleCard({ exam, locale }: { exam: StudentTestSummary; locale: 
         </p>
         {exam.has_attempted ? (
           <Button size="sm" variant="outline" asChild>
-            <Link href={`/${locale}/attempts/${exam.attempt_id}/review`}>
+            <Link href={exam.attempt_id ? `/${locale}/attempts/${exam.attempt_id}/review` : "#"}>
               View Results
             </Link>
           </Button>
