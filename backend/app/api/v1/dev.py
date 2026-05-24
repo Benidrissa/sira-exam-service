@@ -18,7 +18,8 @@ router = APIRouter(prefix="/dev", tags=["dev"])
 
 # Fixed test identities matching conftest.py fixtures
 _TEACHER_ID = uuid.UUID("cccccccc-0000-0000-0000-000000000001")
-_STUDENT_ID = uuid.UUID("dddddddd-0000-0000-0000-000000000002")
+_STUDENT_ID = uuid.UUID("dddddddd-0000-0000-0000-000000000002")  # student01
+_STUDENT_2_ID = uuid.UUID("eeeeeeee-0000-0000-0000-000000000003")  # student02
 _ORG_ID = uuid.UUID("aaaaaaaa-0000-0000-0000-000000000001")
 
 
@@ -35,12 +36,19 @@ async def mint_dev_token(role: str = "expert") -> DevTokenResponse:
     """Return a signed JWT for staging UAT.
 
     role=expert  → teacher (can create banks, validate questions, grade)
-    role=user    → student (can start attempts, submit answers)
+    role=user    → student01 (dddddddd-…0002)
+    role=user2   → student02 (eeeeeeee-…0003)
     """
-    if role not in ("expert", "user", "admin", "sub_admin"):
+    if role not in ("expert", "user", "user2", "admin", "sub_admin"):
         role = "expert"
 
-    user_id = _TEACHER_ID if role in ("expert", "admin", "sub_admin") else _STUDENT_ID
+    if role in ("expert", "admin", "sub_admin"):
+        user_id = _TEACHER_ID
+    elif role == "user2":
+        user_id = _STUDENT_2_ID
+        role = "user"
+    else:
+        user_id = _STUDENT_ID
     exp = datetime.now(UTC) + timedelta(hours=24)
 
     payload = {
