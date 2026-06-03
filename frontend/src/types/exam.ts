@@ -130,6 +130,7 @@ export interface ExamTest {
   time_limit_minutes: number | null;
   shuffle_questions: boolean;
   question_count: number | null;
+  exam_weight: number;
   created_at: string;
   updated_at: string;
 }
@@ -286,6 +287,7 @@ export interface TestAssignment {
 export interface StudentTestSummary {
   test_id: string;
   test_title: string;
+  exam_weight: number;
   bank_subject: string | null;
   released_at: string;
   closes_at: string;
@@ -305,6 +307,7 @@ export interface AttemptSubmissionSummary {
   total_score: number | null;
   passed: boolean | null;
   validation_status: ValidationStatus;
+  exam_weight: number;
   pending_count: number;
   ai_scored_count: number;
   human_reviewed_count: number;
@@ -364,6 +367,7 @@ export interface StudentAttemptHistoryItem {
   total_score: number | null;
   passed: boolean | null;
   validation_status: ValidationStatus;
+  exam_weight: number;
   class_id: string | null;
   class_name: string | null;
   academic_year: string | null;
