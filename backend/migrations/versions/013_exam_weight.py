@@ -39,7 +39,5 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_constraint(
-        "ck_exam_test_weight_range", "exam_tests", type_="check", schema=_SCHEMA
-    )
+    op.drop_constraint("ck_exam_test_weight_range", "exam_tests", type_="check", schema=_SCHEMA)
     op.drop_column("exam_tests", "exam_weight", schema=_SCHEMA)
