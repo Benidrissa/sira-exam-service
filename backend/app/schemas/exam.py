@@ -653,3 +653,24 @@ class AnonMappingItem(BaseModel):
 class AnonMappingResponse(BaseModel):
     test_id: uuid.UUID
     mappings: list[AnonMappingItem]
+
+
+# ---------------------------------------------------------------------------
+# FR-4.28 — Grade scale configuration per org
+# ---------------------------------------------------------------------------
+
+
+class GradeBandSchema(BaseModel):
+    min_score: float = Field(..., ge=0.0, le=100.0)
+    max_score: float = Field(..., ge=0.0, le=100.0)
+    letter: str = Field(..., min_length=1, max_length=4)
+    gpa_points: float = Field(..., ge=0.0)
+    sort_order: int = 0
+
+
+class GradeScaleResponse(BaseModel):
+    bands: list[GradeBandSchema]
+
+
+class GradeScalePut(BaseModel):
+    bands: list[GradeBandSchema] = Field(..., min_length=1)
