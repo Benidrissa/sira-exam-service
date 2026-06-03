@@ -101,6 +101,12 @@ export const listExamBanks = () => apiFetch<ExamBank[]>("/exam/banks");
 export const listBankTests = (bankId: string) =>
   apiFetch<ExamTest[]>(`/exam/banks/${bankId}/tests`);
 
+export const getTest = (testId: string) =>
+  apiFetch<ExamTest>(`/exam/tests/${testId}`);
+
+export const patchTest = (testId: string, data: Partial<ExamTest>) =>
+  apiFetch<ExamTest>(`/exam/tests/${testId}`, { method: "PATCH", body: JSON.stringify(data) });
+
 // ---------------------------------------------------------------------------
 // ExamSource
 // ---------------------------------------------------------------------------
@@ -454,6 +460,9 @@ export const listStudentTests = () =>
 
 export const listStudentHistory = () =>
   apiFetch<StudentAttemptHistoryItem[]>("/exam/student/history");
+
+export const getCourseSummary = () =>
+  apiFetch<import("@/types/exam").CourseSummaryGroup[]>("/exam/student/course-summary");
 
 // ---------------------------------------------------------------------------
 // Phase 4 — Teacher submission management

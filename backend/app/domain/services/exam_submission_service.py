@@ -17,12 +17,14 @@ from app.domain.models.exam import (
     ExamAccessGrant,
     ExamAttempt,
     ExamBank,
+    ExamDispensation,
     ExamQuestion,
     ExamTest,
     QuestionType,
     ReviewAuditLog,
     TestAssignment,
 )
+from app.domain.services import grade_calc
 
 # ---------------------------------------------------------------------------
 # Internal helpers
@@ -149,9 +151,16 @@ async def list_test_submissions(
     )
     assignments = list(asgn_result.scalars().all())
 
+    # FR-4.29: which students are dispensed from this test (score hidden, flagged)
+    disp_result = await db.execute(
+        select(ExamDispensation.student_id).where(ExamDispensation.test_id == test_id)
+    )
+    dispensed_students = set(disp_result.scalars().all())
+
     summaries = []
     for attempt in attempts:
         counts = _dissertation_counts(attempt.dissertation_answers)
+        is_dispensed = attempt.user_id in dispensed_students
 
         # Find the class for this specific attempt's student via ClassMember
         class_id: uuid.UUID | None = None
@@ -177,10 +186,12 @@ async def list_test_submissions(
                 "user_id": display_id,
                 "attempted_at": attempt.attempted_at,
                 "time_taken_sec": attempt.time_taken_sec,
-                "mcq_score": attempt.mcq_score,
-                "total_score": attempt.total_score,
+                "mcq_score": None if is_dispensed else attempt.mcq_score,
+                "total_score": None if is_dispensed else attempt.total_score,
                 "passed": attempt.passed,
                 "validation_status": attempt.validation_status,
+                "exam_weight": test.exam_weight,
+                "dispensed": is_dispensed,
                 "class_id": class_id,
                 "class_name": class_name,
                 "class_archived_at": class_archived_at,
@@ -473,6 +484,7 @@ async def list_student_history(
                 "total_score": attempt.total_score,
                 "passed": attempt.passed,
                 "validation_status": attempt.validation_status,
+                "exam_weight": test.exam_weight,
                 "class_id": class_id,
                 "class_name": class_name,
                 "academic_year": academic_year,
@@ -518,19 +530,14 @@ async def get_attempt_review(
     if attempt.user_id != user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
 
-    # Feedback gate: show_feedback OR closed assignment
-    feedback_available = bool(test.show_feedback)
-    if not feedback_available:
-        # Check if any assignment's closes_at has passed
-        from app.domain.models.exam import TestAssignment
-
-        asgn_result = await db.execute(
-            select(TestAssignment).where(TestAssignment.test_id == test.id)
-        )
-        assignments = list(asgn_result.scalars().all())
-        now = datetime.now(tz=UTC)
-        if any(a.closes_at is not None and a.closes_at.astimezone(UTC) < now for a in assignments):
-            feedback_available = True
+    # Feedback gate (FR-4.13): show_feedback OR a closed assignment window.
+    asgn_result = await db.execute(
+        select(TestAssignment.closes_at).where(TestAssignment.test_id == test.id)
+    )
+    feedback_available = grade_calc.compute_feedback_available(
+        show_feedback=bool(test.show_feedback),
+        closes_ats=list(asgn_result.scalars().all()),
+    )
 
     # Load questions and dissertations
     question_ids = [uuid.UUID(qid) for qid in (attempt.question_ids or [])]

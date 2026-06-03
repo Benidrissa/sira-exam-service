@@ -23,6 +23,7 @@ from app.domain.models.exam import (
     QuestionType,
     TestStatus,
 )
+from app.domain.services.dispensation_service import get_active_dispensation
 
 
 async def start_attempt(
@@ -56,26 +57,29 @@ async def start_attempt(
 
     # Scheduling + class membership gate (only if test has assignments)
     if test.assignments:
-        now = dt.now(tz=UTC)
-        valid_assignment = next(
-            (a for a in test.assignments if a.released_at <= now <= a.closes_at),
-            None,
-        )
-        if valid_assignment is None:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN, detail="Test window not open"
+        # FR-4.29: an active, non-expired dispensation bypasses the window + enrolment gate.
+        dispensation = await get_active_dispensation(db, test_id=test_id, student_id=user_id)
+        if dispensation is None:
+            now = dt.now(tz=UTC)
+            valid_assignment = next(
+                (a for a in test.assignments if a.released_at <= now <= a.closes_at),
+                None,
             )
-        enrolled = await db.scalar(
-            select(ClassMember).where(
-                ClassMember.class_id == valid_assignment.class_id,
-                ClassMember.user_id == user_id,
+            if valid_assignment is None:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN, detail="Test window not open"
+                )
+            enrolled = await db.scalar(
+                select(ClassMember).where(
+                    ClassMember.class_id == valid_assignment.class_id,
+                    ClassMember.user_id == user_id,
+                )
             )
-        )
-        if enrolled is None:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Not enrolled in any class for this test",
-            )
+            if enrolled is None:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Not enrolled in any class for this test",
+                )
 
     # Guard: student may not start a second attempt once one is submitted (FR-1.7 AC4)
     existing = await db.execute(

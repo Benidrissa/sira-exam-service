@@ -193,6 +193,7 @@ class ExamTestCreate(BaseModel):
     show_feedback: bool = False
     mcq_weight: float = Field(1.0, ge=0.0)
     dissertation_weight: float = Field(1.0, ge=0.0)
+    exam_weight: float = Field(1.0, ge=0.0, le=100.0)
     anonymous_grading: bool = False
 
 
@@ -205,6 +206,7 @@ class ExamTestUpdate(BaseModel):
     show_feedback: bool | None = None
     mcq_weight: float | None = Field(None, ge=0.0)
     dissertation_weight: float | None = Field(None, ge=0.0)
+    exam_weight: float | None = Field(None, ge=0.0, le=100.0)
     status: TestStatus | None = None
     anonymous_grading: bool | None = None
 
@@ -223,6 +225,7 @@ class ExamTestResponse(BaseModel):
     show_feedback: bool
     mcq_weight: float
     dissertation_weight: float
+    exam_weight: float
     status: TestStatus
     anonymous_grading: bool
     created_at: datetime
@@ -376,6 +379,8 @@ class AttemptSubmissionSummary(BaseModel):
     total_score: float | None
     passed: bool | None
     validation_status: str
+    exam_weight: float
+    dispensed: bool = False
     pending_count: int
     ai_scored_count: int
     human_reviewed_count: int
@@ -435,6 +440,7 @@ class StudentAttemptHistoryItem(BaseModel):
     total_score: float | None
     passed: bool | None
     validation_status: str
+    exam_weight: float = 1.0
     class_id: uuid.UUID | None = None
     class_name: str | None = None
     academic_year: str | None = None
@@ -573,6 +579,7 @@ class TestAssignmentResponse(BaseModel):
 class StudentTestSummary(BaseModel):
     test_id: uuid.UUID
     test_title: str
+    exam_weight: float = 1.0
     bank_subject: str | None
     released_at: datetime
     closes_at: datetime
@@ -647,3 +654,116 @@ class AnonMappingItem(BaseModel):
 class AnonMappingResponse(BaseModel):
     test_id: uuid.UUID
     mappings: list[AnonMappingItem]
+
+
+# ---------------------------------------------------------------------------
+# FR-4.28 — Grade scale configuration per org
+# ---------------------------------------------------------------------------
+
+
+class GradeBandSchema(BaseModel):
+    min_score: float = Field(..., ge=0.0, le=100.0)
+    max_score: float = Field(..., ge=0.0, le=100.0)
+    letter: str = Field(..., min_length=1, max_length=4)
+    gpa_points: float = Field(..., ge=0.0)
+    sort_order: int = 0
+
+
+class GradeScaleResponse(BaseModel):
+    bands: list[GradeBandSchema]
+
+
+class GradeScalePut(BaseModel):
+    bands: list[GradeBandSchema] = Field(..., min_length=1)
+
+
+# ---------------------------------------------------------------------------
+# FR-4.29 — Exam dispensation / exemption
+# ---------------------------------------------------------------------------
+
+
+class DispensationCreate(BaseModel):
+    student_id: uuid.UUID
+    test_id: uuid.UUID
+    class_id: uuid.UUID
+    reason: str = Field(..., min_length=1)
+    expires_at: datetime | None = None
+
+
+class DispensationResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    org_id: uuid.UUID
+    student_id: uuid.UUID
+    test_id: uuid.UUID
+    class_id: uuid.UUID
+    reason: str
+    granted_by: uuid.UUID
+    granted_at: datetime
+    expires_at: datetime | None
+
+
+# ---------------------------------------------------------------------------
+# FR-4.27 — Student term-score aggregation per course
+# ---------------------------------------------------------------------------
+
+
+class CourseSummaryExam(BaseModel):
+    test_id: uuid.UUID
+    test_title: str
+    exam_weight: float
+    score: float | None
+    passed: bool | None
+    dispensed: bool
+    feedback_available: bool
+    attempt_id: uuid.UUID | None
+
+
+class CourseSummaryGroup(BaseModel):
+    course_code: str
+    course_name: str | None
+    class_id: uuid.UUID
+    class_name: str
+    academic_year: str
+    quarter: Quarter
+    class_archived_at: datetime | None
+    weighted_avg: float | None
+    grade_letter: str | None
+    exams: list[CourseSummaryExam]
+
+
+# ---------------------------------------------------------------------------
+# FR-4.30 — Teacher course portfolio dashboard
+# ---------------------------------------------------------------------------
+
+
+class TeacherCourseSummary(BaseModel):
+    course_code: str
+    course_name: str | None
+    academic_year: str | None
+    class_count: int
+    student_count: int
+    test_count: int
+    avg_score: float | None
+
+
+# ---------------------------------------------------------------------------
+# FR-4.32 — Bulk term finalization
+# ---------------------------------------------------------------------------
+
+
+class FinalizeTermRequest(BaseModel):
+    class_id: uuid.UUID
+    academic_year: str = Field(..., min_length=1, max_length=16)
+    quarter: Quarter
+
+
+class FinalizeTermError(BaseModel):
+    student_id: uuid.UUID
+    reason: str
+
+
+class FinalizeTermResponse(BaseModel):
+    finalized_count: int
+    errors: list[FinalizeTermError]

@@ -7,7 +7,7 @@ import uuid
 from celery.result import AsyncResult
 from fastapi import APIRouter, File, HTTPException, UploadFile, status
 
-from app.api.deps import DB, AdminUser, CurrentUser, TeacherUser
+from app.api.deps import DB, AdminUser, CurrentUser, StudentUser, TeacherUser
 from app.core.auth import AuthenticatedUser
 from app.domain.models.exam import BankStatus
 from app.domain.services import (
@@ -29,6 +29,9 @@ from app.schemas.exam import (
     BulkValidationResponse,
     ComplaintCreate,
     ComplaintResolve,
+    CourseSummaryGroup,
+    DispensationCreate,
+    DispensationResponse,
     DissertationAnswerResponse,
     ExamAccessGrantCreate,
     ExamAccessGrantResponse,
@@ -47,8 +50,13 @@ from app.schemas.exam import (
     ExamTestCreate,
     ExamTestResponse,
     ExamTestUpdate,
+    FinalizeTermRequest,
+    FinalizeTermResponse,
     GenerateBriefRequest,
     GenerationStatusResponse,
+    GradeBandSchema,
+    GradeScalePut,
+    GradeScaleResponse,
     HumanScoreUpdate,
     RegenerateRequest,
     ReviewAuditLogEntry,
@@ -56,6 +64,7 @@ from app.schemas.exam import (
     StartAttemptResponse,
     StudentAttemptHistoryItem,
     SubmitAttemptRequest,
+    TeacherCourseSummary,
 )
 from app.tasks.celery_app import celery_app
 
@@ -566,6 +575,24 @@ async def create_exam_test(
     )
 
 
+@router.get("/tests/{test_id}", response_model=ExamTestResponse)
+async def get_exam_test(test_id: uuid.UUID, user: TeacherUser, db: DB) -> object:
+    """Fetch a single ExamTest (org-scoped) — includes exam_weight (FR-4.26)."""
+    from sqlalchemy import select
+
+    from app.domain.models.exam import ExamBank, ExamTest
+
+    result = await db.execute(
+        select(ExamTest)
+        .join(ExamBank, ExamTest.bank_id == ExamBank.id)
+        .where(ExamTest.id == test_id, ExamBank.org_id == _org(user))
+    )
+    test = result.scalar_one_or_none()
+    if not test:
+        raise HTTPException(status_code=404, detail="ExamTest not found")
+    return test
+
+
 @router.patch("/tests/{test_id}", response_model=ExamTestResponse)
 async def update_exam_test(
     test_id: uuid.UUID,
@@ -877,6 +904,171 @@ async def list_access_grants(
 
     grants = await svc(db, org_id=_org(user))
     return [ExamAccessGrantResponse.model_validate(g) for g in grants]
+
+
+# ---------------------------------------------------------------------------
+# FR-4.32: Bulk term finalization
+# ---------------------------------------------------------------------------
+
+
+@router.post("/courses/{course_code}/finalize-term", response_model=FinalizeTermResponse)
+async def finalize_term(
+    course_code: str,
+    data: FinalizeTermRequest,
+    db: DB,
+    user: TeacherUser,
+) -> FinalizeTermResponse:
+    """Finalise term grades for a course+class+year+quarter (teacher/admin)."""
+    from app.domain.services import term_grade_service
+
+    result = await term_grade_service.finalize_term(
+        db,
+        org_id=_org(user),
+        course_code=course_code,
+        class_id=data.class_id,
+        academic_year=data.academic_year,
+        quarter=data.quarter.value,
+    )
+    return FinalizeTermResponse(**result)
+
+
+# ---------------------------------------------------------------------------
+# FR-4.30: Teacher course portfolio dashboard
+# ---------------------------------------------------------------------------
+
+
+@router.get("/teacher/courses", response_model=list[TeacherCourseSummary])
+async def list_teacher_courses(
+    db: DB,
+    user: TeacherUser,
+    academic_year: str | None = None,
+    quarter: str | None = None,
+) -> list[TeacherCourseSummary]:
+    """Course cards for the teacher's own banks (FR-4.30)."""
+    from app.domain.services import teacher_courses_service
+
+    rows = await teacher_courses_service.list_teacher_courses(
+        db,
+        user_id=_uid(user),
+        org_id=_org(user),
+        academic_year=academic_year,
+        quarter=quarter,
+    )
+    return [TeacherCourseSummary(**r) for r in rows]
+
+
+# ---------------------------------------------------------------------------
+# FR-4.27: Student term-score aggregation per course
+# ---------------------------------------------------------------------------
+
+
+@router.get("/student/course-summary", response_model=list[CourseSummaryGroup])
+async def get_student_course_summary(
+    db: DB,
+    user: StudentUser,
+) -> list[CourseSummaryGroup]:
+    """Return the student's weighted term grades grouped by course/class/quarter."""
+    from app.domain.services import course_summary_service
+
+    groups = await course_summary_service.get_student_course_summary(
+        db, user_id=_uid(user), org_id=_org(user)
+    )
+    return [CourseSummaryGroup(**g) for g in groups]
+
+
+# ---------------------------------------------------------------------------
+# FR-4.28: Grade scale configuration per org
+# ---------------------------------------------------------------------------
+
+
+@router.get("/grade-scale", response_model=GradeScaleResponse)
+async def get_grade_scale(db: DB, user: CurrentUser) -> GradeScaleResponse:
+    """Return the org's grade scale (default F/D/C/B/A when none configured)."""
+    from app.domain.services import grade_scale_service
+
+    bands = await grade_scale_service.get_scale(db, org_id=_org(user))
+    return GradeScaleResponse(bands=[GradeBandSchema(**vars(b)) for b in bands])
+
+
+@router.put("/grade-scale", response_model=GradeScaleResponse)
+async def put_grade_scale(
+    data: GradeScalePut,
+    db: DB,
+    user: AdminUser,
+) -> GradeScaleResponse:
+    """Replace the org's entire grade scale atomically (admin only, FR-4.28)."""
+    from app.domain.services import grade_scale_service
+    from app.domain.services.grade_scale_service import GradeBand
+
+    bands = await grade_scale_service.put_scale(
+        db,
+        org_id=_org(user),
+        bands=[
+            GradeBand(b.min_score, b.max_score, b.letter, b.gpa_points, b.sort_order)
+            for b in data.bands
+        ],
+    )
+    return GradeScaleResponse(bands=[GradeBandSchema(**vars(b)) for b in bands])
+
+
+# ---------------------------------------------------------------------------
+# FR-4.29: Exam dispensation / exemption
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/dispensations",
+    response_model=DispensationResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_dispensation(
+    data: DispensationCreate,
+    db: DB,
+    user: TeacherUser,
+) -> DispensationResponse:
+    """Exempt a student from a test (teacher/admin, FR-4.29)."""
+    from app.domain.services import dispensation_service
+
+    dispensation = await dispensation_service.create_dispensation(
+        db,
+        org_id=_org(user),
+        granted_by=_uid(user),
+        student_id=data.student_id,
+        test_id=data.test_id,
+        class_id=data.class_id,
+        reason=data.reason,
+        expires_at=data.expires_at,
+    )
+    return DispensationResponse.model_validate(dispensation)
+
+
+@router.delete("/dispensations/{dispensation_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def revoke_dispensation(
+    dispensation_id: uuid.UUID,
+    db: DB,
+    user: TeacherUser,
+) -> None:
+    """Revoke a dispensation (teacher/admin); 409 if student already submitted."""
+    from app.domain.services import dispensation_service
+
+    await dispensation_service.delete_dispensation(
+        db, dispensation_id=dispensation_id, org_id=_org(user)
+    )
+
+
+@router.get("/tests/{test_id}/dispensations", response_model=list[DispensationResponse])
+async def list_test_dispensations(
+    test_id: uuid.UUID,
+    db: DB,
+    user: TeacherUser,
+) -> list[DispensationResponse]:
+    """List all dispensations for a test (teacher/admin, FR-4.29)."""
+    from app.domain.services import dispensation_service
+
+    rows = await dispensation_service.list_test_dispensations(
+        db, test_id=test_id, org_id=_org(user)
+    )
+    return [DispensationResponse.model_validate(r) for r in rows]
 
 
 # ---------------------------------------------------------------------------

@@ -14,6 +14,7 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Integer,
+    String,
     Text,
     UniqueConstraint,
     func,
@@ -269,6 +270,8 @@ class ExamTest(Base):
     show_feedback: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     mcq_weight: Mapped[float] = mapped_column(Float, nullable=False, default=1.0)
     dissertation_weight: Mapped[float] = mapped_column(Float, nullable=False, default=1.0)
+    # FR-4.26: contribution of this exam to the course term grade (relative coefficient).
+    exam_weight: Mapped[float] = mapped_column(Float, nullable=False, default=1.0)
     status: Mapped[TestStatus] = mapped_column(
         Enum(TestStatus, name="teststatus", create_type=False),
         nullable=False,
@@ -278,6 +281,12 @@ class ExamTest(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "exam_weight >= 0 AND exam_weight <= 100", name="ck_exam_test_weight_range"
+        ),
     )
 
     bank: Mapped[ExamBank] = relationship("ExamBank", back_populates="tests")
@@ -544,4 +553,92 @@ class ReviewAuditLog(Base):
     new_values: Mapped[dict] = mapped_column(JSONB, nullable=False)
     occurred_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class GradeScale(Base):
+    """A single letter-grade band in an org's grading scale (FR-4.28).
+
+    A complete scale is the set of rows for one org, ordered by sort_order,
+    contiguously covering 0-100. When an org has no rows a built-in default
+    scale (F/D/C/B/A) is used instead.
+    """
+
+    __tablename__ = "grade_scales"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    min_score: Mapped[float] = mapped_column(Float, nullable=False)
+    max_score: Mapped[float] = mapped_column(Float, nullable=False)
+    letter: Mapped[str] = mapped_column(String(4), nullable=False)
+    gpa_points: Mapped[float] = mapped_column(Float, nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+class ExamDispensation(Base):
+    """A student exemption from sitting a specific test (FR-4.29).
+
+    An active, non-expired dispensation lets the student bypass the open-window
+    and class-enrolment gates, and excludes the exam from their weighted term
+    average. One dispensation per (test, student).
+    """
+
+    __tablename__ = "exam_dispensations"
+    __table_args__ = (
+        UniqueConstraint("test_id", "student_id", name="uq_dispensation_test_student"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    student_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    test_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("exam_tests.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    class_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("school_classes.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    granted_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    granted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class TermGrade(Base):
+    """A finalised per-course/term grade for a student (FR-4.32).
+
+    Re-finalisation is non-destructive: the previous live row is kept and its
+    superseded_by points to the new authoritative row.
+    """
+
+    __tablename__ = "term_grades"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    student_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    course_code: Mapped[str] = mapped_column(String(32), nullable=False)
+    class_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("school_classes.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    academic_year: Mapped[str] = mapped_column(String(16), nullable=False)
+    quarter: Mapped[Quarter] = mapped_column(
+        Enum(Quarter, name="quarter", create_type=False), nullable=False
+    )
+    weighted_avg: Mapped[float | None] = mapped_column(Float, nullable=True)
+    grade_letter: Mapped[str | None] = mapped_column(String(4), nullable=True)
+    finalized_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    superseded_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("term_grades.id", ondelete="SET NULL"),
+        nullable=True,
     )

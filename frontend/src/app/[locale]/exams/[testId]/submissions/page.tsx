@@ -1,8 +1,9 @@
 "use client";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { listTestSubmissions, batchValidate, validateAttempt } from "@/lib/api";
-import type { AttemptSubmissionSummary } from "@/types/exam";
+import { listTestSubmissions, batchValidate, validateAttempt, getTest, listBankTests } from "@/lib/api";
+import type { AttemptSubmissionSummary, ExamTest } from "@/types/exam";
+import { AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -49,6 +50,81 @@ function statusBadge(s: string) {
   return s === "validated"
     ? <Badge className="bg-green-100 text-green-700">Validated</Badge>
     : <Badge variant="outline">Pending</Badge>;
+}
+
+// ─── Course grade preview (FR-4.33) ───────────────────────────────────────────
+function CourseGradePreview({
+  thisTest,
+  courseTests,
+  submissions,
+  locale,
+}: {
+  thisTest: ExamTest;
+  courseTests: ExamTest[];
+  submissions: AttemptSubmissionSummary[];
+  locale: string;
+}) {
+  // Sum of all exam weights in the course (this bank). Advisory: weights are
+  // relative coefficients, so a sum over 100% is a soft warning, not an error.
+  const totalWeight = courseTests.reduce((sum, t) => sum + (t.exam_weight ?? 0), 0);
+  const overweight = totalWeight > 100;
+
+  // Live class average for THIS exam from current (non-dispensed) scores.
+  const scored = submissions.filter((s) => s.total_score != null);
+  const classAvg =
+    scored.length > 0
+      ? scored.reduce((sum, s) => sum + (s.total_score ?? 0), 0) / scored.length
+      : null;
+  const contribution =
+    classAvg != null && totalWeight > 0 ? (classAvg * thisTest.exam_weight) / totalWeight : null;
+
+  return (
+    <Card>
+      <CardContent className="space-y-3 py-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold">Course Grade Preview</h2>
+          <Link
+            href={`/${locale}/exams/${thisTest.id}/settings`}
+            className="text-xs text-blue-600 hover:underline"
+          >
+            Edit weight
+          </Link>
+        </div>
+
+        {overweight && (
+          <div className="flex items-center gap-2 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-700">
+            <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+            Course exam weights sum to {totalWeight}% (over 100%). Weights are relative, so this is
+            only a heads-up.
+          </div>
+        )}
+
+        <table className="w-full text-sm">
+          <tbody>
+            {courseTests.map((t) => (
+              <tr key={t.id} className={t.id === thisTest.id ? "font-medium" : ""}>
+                <td className="py-1">{t.title}</td>
+                <td className="py-1 text-right text-muted-foreground">{t.exam_weight}%</td>
+              </tr>
+            ))}
+            <tr className="border-t">
+              <td className="py-1 font-medium">Total weight</td>
+              <td className={`py-1 text-right font-medium ${overweight ? "text-amber-700" : ""}`}>
+                {totalWeight}%
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div className="flex items-center justify-between border-t pt-2 text-sm">
+          <span className="text-muted-foreground">This exam — live class average</span>
+          <span className="font-medium">
+            {classAvg != null ? `${classAvg.toFixed(1)} (≈ ${contribution?.toFixed(1)} weighted)` : "—"}
+          </span>
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
 // ─── Class group accordion ────────────────────────────────────────────────────
@@ -155,6 +231,19 @@ export default function SubmissionsPage() {
     staleTime: 10_000,
   });
 
+  // FR-4.33: load this test + its course siblings (same bank) for the preview.
+  const { data: thisTest } = useQuery({
+    queryKey: ["test", testId],
+    queryFn: () => getTest(testId),
+    staleTime: 30_000,
+  });
+  const { data: courseTests } = useQuery({
+    queryKey: ["bank-tests", thisTest?.bank_id],
+    queryFn: () => listBankTests(thisTest!.bank_id),
+    enabled: !!thisTest?.bank_id,
+    staleTime: 30_000,
+  });
+
   const batchMutation = useMutation({
     mutationFn: () => batchValidate(testId, {
       attempt_ids: [...selected],
@@ -206,6 +295,15 @@ export default function SubmissionsPage() {
   return (
     <main className="max-w-5xl mx-auto p-8 space-y-4">
       <h1 className="text-2xl font-bold">Student Submissions</h1>
+
+      {thisTest && courseTests && (
+        <CourseGradePreview
+          thisTest={thisTest}
+          courseTests={courseTests}
+          submissions={submissions ?? []}
+          locale={locale}
+        />
+      )}
 
       {/* Filter bar */}
       {(submissions ?? []).length > 0 && (
