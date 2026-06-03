@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import sqlalchemy as sa
 from alembic import op
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import ENUM, UUID
 
 revision = "016"
 down_revision = "015"
@@ -16,7 +16,10 @@ branch_labels = None
 depends_on = None
 
 _SCHEMA = "exam_svc"
-_QUARTER = sa.Enum("q1", "q2", "q3", "q4", name="quarter", create_type=False)
+# Reference the existing "quarter" enum (created in migration 009) without
+# recreating it. create_type=False is honoured by postgresql.ENUM (not the
+# generic sa.Enum), so no CREATE TYPE is emitted.
+_QUARTER = ENUM("q1", "q2", "q3", "q4", name="quarter", create_type=False)
 
 
 def upgrade() -> None:
