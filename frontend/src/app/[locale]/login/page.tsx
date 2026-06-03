@@ -40,7 +40,9 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const role = roleFromEmail(email);
-      const res = await fetch(`${API_URL}/dev/tokens?role=${role}`);
+      const params = new URLSearchParams({ role });
+      if (role === "user") params.set("email", email.trim().toLowerCase());
+      const res = await fetch(`${API_URL}/dev/tokens?${params.toString()}`);
       if (!res.ok) throw new Error(`Server returned ${res.status} — is the backend running with DEBUG=true?`);
       const data = await res.json();
       document.cookie = `access_token=${data.access_token}; path=/; SameSite=Lax; max-age=86400`;
@@ -157,7 +159,8 @@ export default function LoginPage() {
           </span>
           <div className="text-xs text-blue-300/70 space-y-0.5">
             <p>teacher@sira.test · test1234 → Teacher</p>
-            <p>student@sira.test · test1234 → Student</p>
+            <p>student01@sira.test · test1234 → Student A</p>
+            <p>student02@sira.test · test1234 → Student B</p>
             <p>admin@sira.test · test1234 → Admin</p>
           </div>
         </div>

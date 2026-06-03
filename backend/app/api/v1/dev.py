@@ -32,12 +32,15 @@ class DevTokenResponse(BaseModel):
 
 
 @router.get("/tokens", response_model=DevTokenResponse)
-async def mint_dev_token(role: str = "expert") -> DevTokenResponse:
+async def mint_dev_token(role: str = "expert", email: str | None = None) -> DevTokenResponse:
     """Return a signed JWT for staging UAT.
 
     role=expert  → teacher (can create banks, validate questions, grade)
-    role=user    → student01 (dddddddd-…0002)
-    role=user2   → student02 (eeeeeeee-…0003)
+    role=user    → student; when email is provided a deterministic per-email UUID is
+                   used so each distinct student email yields a distinct user_id
+    role=user2   → student02 legacy alias (eeeeeeee-…0003), kept for script compat
+    email        → optional; when given with role=user, derives uuid5(NAMESPACE_URL, email)
+                   instead of the hardcoded _STUDENT_ID
     """
     if role not in ("expert", "user", "user2", "admin", "sub_admin"):
         role = "expert"
@@ -48,7 +51,9 @@ async def mint_dev_token(role: str = "expert") -> DevTokenResponse:
         user_id = _STUDENT_2_ID
         role = "user"
     else:
-        user_id = _STUDENT_ID
+        # Derive a deterministic per-email UUID so every student has a unique identity.
+        # Fall back to hardcoded ID when no email supplied (backward compat for scripts).
+        user_id = uuid.uuid5(uuid.NAMESPACE_URL, email) if email else _STUDENT_ID
     exp = datetime.now(UTC) + timedelta(hours=24)
 
     payload = {
