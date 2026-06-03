@@ -193,6 +193,7 @@ class ExamTestCreate(BaseModel):
     show_feedback: bool = False
     mcq_weight: float = Field(1.0, ge=0.0)
     dissertation_weight: float = Field(1.0, ge=0.0)
+    exam_weight: float = Field(1.0, ge=0.0, le=100.0)
     anonymous_grading: bool = False
 
 
@@ -205,6 +206,7 @@ class ExamTestUpdate(BaseModel):
     show_feedback: bool | None = None
     mcq_weight: float | None = Field(None, ge=0.0)
     dissertation_weight: float | None = Field(None, ge=0.0)
+    exam_weight: float | None = Field(None, ge=0.0, le=100.0)
     status: TestStatus | None = None
     anonymous_grading: bool | None = None
 
@@ -223,6 +225,7 @@ class ExamTestResponse(BaseModel):
     show_feedback: bool
     mcq_weight: float
     dissertation_weight: float
+    exam_weight: float
     status: TestStatus
     anonymous_grading: bool
     created_at: datetime
@@ -376,6 +379,7 @@ class AttemptSubmissionSummary(BaseModel):
     total_score: float | None
     passed: bool | None
     validation_status: str
+    exam_weight: float
     pending_count: int
     ai_scored_count: int
     human_reviewed_count: int
@@ -435,6 +439,7 @@ class StudentAttemptHistoryItem(BaseModel):
     total_score: float | None
     passed: bool | None
     validation_status: str
+    exam_weight: float = 1.0
     class_id: uuid.UUID | None = None
     class_name: str | None = None
     academic_year: str | None = None
@@ -573,6 +578,7 @@ class TestAssignmentResponse(BaseModel):
 class StudentTestSummary(BaseModel):
     test_id: uuid.UUID
     test_title: str
+    exam_weight: float = 1.0
     bank_subject: str | None
     released_at: datetime
     closes_at: datetime
