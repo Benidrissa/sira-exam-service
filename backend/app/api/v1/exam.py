@@ -51,6 +51,9 @@ from app.schemas.exam import (
     ExamTestUpdate,
     GenerateBriefRequest,
     GenerationStatusResponse,
+    GradeBandSchema,
+    GradeScalePut,
+    GradeScaleResponse,
     HumanScoreUpdate,
     RegenerateRequest,
     ReviewAuditLogEntry,
@@ -879,6 +882,41 @@ async def list_access_grants(
 
     grants = await svc(db, org_id=_org(user))
     return [ExamAccessGrantResponse.model_validate(g) for g in grants]
+
+
+# ---------------------------------------------------------------------------
+# FR-4.28: Grade scale configuration per org
+# ---------------------------------------------------------------------------
+
+
+@router.get("/grade-scale", response_model=GradeScaleResponse)
+async def get_grade_scale(db: DB, user: CurrentUser) -> GradeScaleResponse:
+    """Return the org's grade scale (default F/D/C/B/A when none configured)."""
+    from app.domain.services import grade_scale_service
+
+    bands = await grade_scale_service.get_scale(db, org_id=_org(user))
+    return GradeScaleResponse(bands=[GradeBandSchema(**vars(b)) for b in bands])
+
+
+@router.put("/grade-scale", response_model=GradeScaleResponse)
+async def put_grade_scale(
+    data: GradeScalePut,
+    db: DB,
+    user: AdminUser,
+) -> GradeScaleResponse:
+    """Replace the org's entire grade scale atomically (admin only, FR-4.28)."""
+    from app.domain.services import grade_scale_service
+    from app.domain.services.grade_scale_service import GradeBand
+
+    bands = await grade_scale_service.put_scale(
+        db,
+        org_id=_org(user),
+        bands=[
+            GradeBand(b.min_score, b.max_score, b.letter, b.gpa_points, b.sort_order)
+            for b in data.bands
+        ],
+    )
+    return GradeScaleResponse(bands=[GradeBandSchema(**vars(b)) for b in bands])
 
 
 # ---------------------------------------------------------------------------

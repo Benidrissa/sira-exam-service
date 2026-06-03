@@ -14,6 +14,7 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Integer,
+    String,
     Text,
     UniqueConstraint,
     func,
@@ -553,6 +554,25 @@ class ReviewAuditLog(Base):
     occurred_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+
+
+class GradeScale(Base):
+    """A single letter-grade band in an org's grading scale (FR-4.28).
+
+    A complete scale is the set of rows for one org, ordered by sort_order,
+    contiguously covering 0-100. When an org has no rows a built-in default
+    scale (F/D/C/B/A) is used instead.
+    """
+
+    __tablename__ = "grade_scales"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    min_score: Mapped[float] = mapped_column(Float, nullable=False)
+    max_score: Mapped[float] = mapped_column(Float, nullable=False)
+    letter: Mapped[str] = mapped_column(String(4), nullable=False)
+    gpa_points: Mapped[float] = mapped_column(Float, nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False)
 
 
 class ExamDispensation(Base):
