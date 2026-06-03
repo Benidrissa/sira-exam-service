@@ -455,6 +455,9 @@ export const listStudentTests = () =>
 export const listStudentHistory = () =>
   apiFetch<StudentAttemptHistoryItem[]>("/exam/student/history");
 
+export const getCourseSummary = () =>
+  apiFetch<import("@/types/exam").CourseSummaryGroup[]>("/exam/student/course-summary");
+
 // ---------------------------------------------------------------------------
 // Phase 4 — Teacher submission management
 // ---------------------------------------------------------------------------
