@@ -607,3 +607,38 @@ class ExamDispensation(Base):
     granted_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     granted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class TermGrade(Base):
+    """A finalised per-course/term grade for a student (FR-4.32).
+
+    Re-finalisation is non-destructive: the previous live row is kept and its
+    superseded_by points to the new authoritative row.
+    """
+
+    __tablename__ = "term_grades"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    student_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    course_code: Mapped[str] = mapped_column(String(32), nullable=False)
+    class_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("school_classes.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    academic_year: Mapped[str] = mapped_column(String(16), nullable=False)
+    quarter: Mapped[Quarter] = mapped_column(
+        Enum(Quarter, name="quarter", create_type=False), nullable=False
+    )
+    weighted_avg: Mapped[float | None] = mapped_column(Float, nullable=True)
+    grade_letter: Mapped[str | None] = mapped_column(String(4), nullable=True)
+    finalized_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    superseded_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("term_grades.id", ondelete="SET NULL"),
+        nullable=True,
+    )
