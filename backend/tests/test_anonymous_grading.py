@@ -117,12 +117,13 @@ async def test_list_submissions_anonymous_masks_user_id() -> None:
         _scalar(test),  # call 1
         _scalars([attempt]),  # call 2
         _scalars([]),  # call 3 (no assignments)
+        _scalars([]),  # call 4 (no dispensations — FR-4.29)
     ]
     db.get.return_value = bank
 
     rows = await exam_submission_service.list_test_submissions(db, test_id=TEST_ID, org_id=ORG_A)
 
-    assert db.execute.call_count == 3, "Expected exactly 3 db.execute calls"
+    assert db.execute.call_count == 4, "Expected exactly 4 db.execute calls"
     assert len(rows) == 1
     # user_id field should carry the anon_id value, not the real student ID
     assert rows[0]["user_id"] == ANON_A
@@ -154,14 +155,16 @@ async def test_list_submissions_non_anonymous_preserves_user_id() -> None:
         _scalar(test),  # call 1: _get_test_with_org_guard
         _scalars([attempt]),  # call 2: submitted attempts
         _scalars([]),  # call 3: TestAssignment (none)
+        _scalars([]),  # call 4: dispensations (none — FR-4.29)
     ]
     db.get.return_value = bank
 
     rows = await exam_submission_service.list_test_submissions(db, test_id=TEST_ID, org_id=ORG_A)
 
-    assert db.execute.call_count == 3, "Expected exactly 3 db.execute calls"
+    assert db.execute.call_count == 4, "Expected exactly 4 db.execute calls"
     assert len(rows) == 1
     assert rows[0]["user_id"] == STUDENT_A
+    assert rows[0]["dispensed"] is False
 
 
 # ---------------------------------------------------------------------------
