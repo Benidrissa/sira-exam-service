@@ -419,3 +419,27 @@ export interface ScoreComplaint {
   reviewed_at: string | null;
   created_at: string;
 }
+
+export interface CourseSummaryExam {
+  test_id: string;
+  test_title: string;
+  exam_weight: number;
+  score: number | null;
+  passed: boolean | null;
+  dispensed: boolean;
+  feedback_available: boolean;
+  attempt_id: string | null;
+}
+
+export interface CourseSummaryGroup {
+  course_code: string;
+  course_name: string | null;
+  class_id: string;
+  class_name: string;
+  academic_year: string;
+  quarter: Quarter;
+  class_archived_at: string | null;
+  weighted_avg: number | null;
+  grade_letter: string | null;
+  exams: CourseSummaryExam[];
+}
