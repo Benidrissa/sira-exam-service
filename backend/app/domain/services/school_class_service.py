@@ -454,6 +454,7 @@ async def get_student_available_tests(
             {
                 "test_id": a.test_id,
                 "test_title": a.test.title,
+                "exam_weight": a.test.exam_weight,
                 "bank_subject": bank.subject if bank else None,
                 "released_at": a.released_at,
                 "closes_at": a.closes_at,

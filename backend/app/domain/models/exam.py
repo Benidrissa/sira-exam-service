@@ -270,6 +270,8 @@ class ExamTest(Base):
     show_feedback: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     mcq_weight: Mapped[float] = mapped_column(Float, nullable=False, default=1.0)
     dissertation_weight: Mapped[float] = mapped_column(Float, nullable=False, default=1.0)
+    # FR-4.26: contribution of this exam to the course term grade (relative coefficient).
+    exam_weight: Mapped[float] = mapped_column(Float, nullable=False, default=1.0)
     status: Mapped[TestStatus] = mapped_column(
         Enum(TestStatus, name="teststatus", create_type=False),
         nullable=False,
@@ -279,6 +281,12 @@ class ExamTest(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "exam_weight >= 0 AND exam_weight <= 100", name="ck_exam_test_weight_range"
+        ),
     )
 
     bank: Mapped[ExamBank] = relationship("ExamBank", back_populates="tests")
