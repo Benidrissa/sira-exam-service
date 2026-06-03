@@ -731,3 +731,18 @@ class CourseSummaryGroup(BaseModel):
     weighted_avg: float | None
     grade_letter: str | None
     exams: list[CourseSummaryExam]
+
+
+# ---------------------------------------------------------------------------
+# FR-4.30 — Teacher course portfolio dashboard
+# ---------------------------------------------------------------------------
+
+
+class TeacherCourseSummary(BaseModel):
+    course_code: str
+    course_name: str | None
+    academic_year: str | None
+    class_count: int
+    student_count: int
+    test_count: int
+    avg_score: float | None

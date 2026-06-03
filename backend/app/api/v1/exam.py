@@ -62,6 +62,7 @@ from app.schemas.exam import (
     StartAttemptResponse,
     StudentAttemptHistoryItem,
     SubmitAttemptRequest,
+    TeacherCourseSummary,
 )
 from app.tasks.celery_app import celery_app
 
@@ -883,6 +884,31 @@ async def list_access_grants(
 
     grants = await svc(db, org_id=_org(user))
     return [ExamAccessGrantResponse.model_validate(g) for g in grants]
+
+
+# ---------------------------------------------------------------------------
+# FR-4.30: Teacher course portfolio dashboard
+# ---------------------------------------------------------------------------
+
+
+@router.get("/teacher/courses", response_model=list[TeacherCourseSummary])
+async def list_teacher_courses(
+    db: DB,
+    user: TeacherUser,
+    academic_year: str | None = None,
+    quarter: str | None = None,
+) -> list[TeacherCourseSummary]:
+    """Course cards for the teacher's own banks (FR-4.30)."""
+    from app.domain.services import teacher_courses_service
+
+    rows = await teacher_courses_service.list_teacher_courses(
+        db,
+        user_id=_uid(user),
+        org_id=_org(user),
+        academic_year=academic_year,
+        quarter=quarter,
+    )
+    return [TeacherCourseSummary(**r) for r in rows]
 
 
 # ---------------------------------------------------------------------------
