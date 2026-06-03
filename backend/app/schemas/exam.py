@@ -380,6 +380,7 @@ class AttemptSubmissionSummary(BaseModel):
     passed: bool | None
     validation_status: str
     exam_weight: float
+    dispensed: bool = False
     pending_count: int
     ai_scored_count: int
     human_reviewed_count: int
@@ -653,3 +654,30 @@ class AnonMappingItem(BaseModel):
 class AnonMappingResponse(BaseModel):
     test_id: uuid.UUID
     mappings: list[AnonMappingItem]
+
+
+# ---------------------------------------------------------------------------
+# FR-4.29 — Exam dispensation / exemption
+# ---------------------------------------------------------------------------
+
+
+class DispensationCreate(BaseModel):
+    student_id: uuid.UUID
+    test_id: uuid.UUID
+    class_id: uuid.UUID
+    reason: str = Field(..., min_length=1)
+    expires_at: datetime | None = None
+
+
+class DispensationResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    org_id: uuid.UUID
+    student_id: uuid.UUID
+    test_id: uuid.UUID
+    class_id: uuid.UUID
+    reason: str
+    granted_by: uuid.UUID
+    granted_at: datetime
+    expires_at: datetime | None

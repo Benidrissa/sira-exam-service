@@ -29,6 +29,8 @@ from app.schemas.exam import (
     BulkValidationResponse,
     ComplaintCreate,
     ComplaintResolve,
+    DispensationCreate,
+    DispensationResponse,
     DissertationAnswerResponse,
     ExamAccessGrantCreate,
     ExamAccessGrantResponse,
@@ -877,6 +879,66 @@ async def list_access_grants(
 
     grants = await svc(db, org_id=_org(user))
     return [ExamAccessGrantResponse.model_validate(g) for g in grants]
+
+
+# ---------------------------------------------------------------------------
+# FR-4.29: Exam dispensation / exemption
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/dispensations",
+    response_model=DispensationResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_dispensation(
+    data: DispensationCreate,
+    db: DB,
+    user: TeacherUser,
+) -> DispensationResponse:
+    """Exempt a student from a test (teacher/admin, FR-4.29)."""
+    from app.domain.services import dispensation_service
+
+    dispensation = await dispensation_service.create_dispensation(
+        db,
+        org_id=_org(user),
+        granted_by=_uid(user),
+        student_id=data.student_id,
+        test_id=data.test_id,
+        class_id=data.class_id,
+        reason=data.reason,
+        expires_at=data.expires_at,
+    )
+    return DispensationResponse.model_validate(dispensation)
+
+
+@router.delete("/dispensations/{dispensation_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def revoke_dispensation(
+    dispensation_id: uuid.UUID,
+    db: DB,
+    user: TeacherUser,
+) -> None:
+    """Revoke a dispensation (teacher/admin); 409 if student already submitted."""
+    from app.domain.services import dispensation_service
+
+    await dispensation_service.delete_dispensation(
+        db, dispensation_id=dispensation_id, org_id=_org(user)
+    )
+
+
+@router.get("/tests/{test_id}/dispensations", response_model=list[DispensationResponse])
+async def list_test_dispensations(
+    test_id: uuid.UUID,
+    db: DB,
+    user: TeacherUser,
+) -> list[DispensationResponse]:
+    """List all dispensations for a test (teacher/admin, FR-4.29)."""
+    from app.domain.services import dispensation_service
+
+    rows = await dispensation_service.list_test_dispensations(
+        db, test_id=test_id, org_id=_org(user)
+    )
+    return [DispensationResponse.model_validate(r) for r in rows]
 
 
 # ---------------------------------------------------------------------------
