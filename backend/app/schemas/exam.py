@@ -702,3 +702,32 @@ class DispensationResponse(BaseModel):
     granted_by: uuid.UUID
     granted_at: datetime
     expires_at: datetime | None
+
+
+# ---------------------------------------------------------------------------
+# FR-4.27 — Student term-score aggregation per course
+# ---------------------------------------------------------------------------
+
+
+class CourseSummaryExam(BaseModel):
+    test_id: uuid.UUID
+    test_title: str
+    exam_weight: float
+    score: float | None
+    passed: bool | None
+    dispensed: bool
+    feedback_available: bool
+    attempt_id: uuid.UUID | None
+
+
+class CourseSummaryGroup(BaseModel):
+    course_code: str
+    course_name: str | None
+    class_id: uuid.UUID
+    class_name: str
+    academic_year: str
+    quarter: Quarter
+    class_archived_at: datetime | None
+    weighted_avg: float | None
+    grade_letter: str | None
+    exams: list[CourseSummaryExam]

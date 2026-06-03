@@ -7,7 +7,7 @@ import uuid
 from celery.result import AsyncResult
 from fastapi import APIRouter, File, HTTPException, UploadFile, status
 
-from app.api.deps import DB, AdminUser, CurrentUser, TeacherUser
+from app.api.deps import DB, AdminUser, CurrentUser, StudentUser, TeacherUser
 from app.core.auth import AuthenticatedUser
 from app.domain.models.exam import BankStatus
 from app.domain.services import (
@@ -29,6 +29,7 @@ from app.schemas.exam import (
     BulkValidationResponse,
     ComplaintCreate,
     ComplaintResolve,
+    CourseSummaryGroup,
     DispensationCreate,
     DispensationResponse,
     DissertationAnswerResponse,
@@ -882,6 +883,25 @@ async def list_access_grants(
 
     grants = await svc(db, org_id=_org(user))
     return [ExamAccessGrantResponse.model_validate(g) for g in grants]
+
+
+# ---------------------------------------------------------------------------
+# FR-4.27: Student term-score aggregation per course
+# ---------------------------------------------------------------------------
+
+
+@router.get("/student/course-summary", response_model=list[CourseSummaryGroup])
+async def get_student_course_summary(
+    db: DB,
+    user: StudentUser,
+) -> list[CourseSummaryGroup]:
+    """Return the student's weighted term grades grouped by course/class/quarter."""
+    from app.domain.services import course_summary_service
+
+    groups = await course_summary_service.get_student_course_summary(
+        db, user_id=_uid(user), org_id=_org(user)
+    )
+    return [CourseSummaryGroup(**g) for g in groups]
 
 
 # ---------------------------------------------------------------------------

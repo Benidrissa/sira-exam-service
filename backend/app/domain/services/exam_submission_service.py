@@ -24,6 +24,7 @@ from app.domain.models.exam import (
     ReviewAuditLog,
     TestAssignment,
 )
+from app.domain.services import grade_calc
 
 # ---------------------------------------------------------------------------
 # Internal helpers
@@ -529,19 +530,14 @@ async def get_attempt_review(
     if attempt.user_id != user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
 
-    # Feedback gate: show_feedback OR closed assignment
-    feedback_available = bool(test.show_feedback)
-    if not feedback_available:
-        # Check if any assignment's closes_at has passed
-        from app.domain.models.exam import TestAssignment
-
-        asgn_result = await db.execute(
-            select(TestAssignment).where(TestAssignment.test_id == test.id)
-        )
-        assignments = list(asgn_result.scalars().all())
-        now = datetime.now(tz=UTC)
-        if any(a.closes_at is not None and a.closes_at.astimezone(UTC) < now for a in assignments):
-            feedback_available = True
+    # Feedback gate (FR-4.13): show_feedback OR a closed assignment window.
+    asgn_result = await db.execute(
+        select(TestAssignment.closes_at).where(TestAssignment.test_id == test.id)
+    )
+    feedback_available = grade_calc.compute_feedback_available(
+        show_feedback=bool(test.show_feedback),
+        closes_ats=list(asgn_result.scalars().all()),
+    )
 
     # Load questions and dissertations
     question_ids = [uuid.UUID(qid) for qid in (attempt.question_ids or [])]

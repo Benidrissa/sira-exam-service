@@ -47,7 +47,16 @@ def require_admin(
     return user
 
 
+def require_student(
+    user: Annotated[AuthenticatedUser, Depends(get_current_user)],
+) -> AuthenticatedUser:
+    if user.role != "user":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Student role required")
+    return user
+
+
 CurrentUser = Annotated[AuthenticatedUser, Depends(get_current_user)]
 TeacherUser = Annotated[AuthenticatedUser, Depends(require_teacher)]
 AdminUser = Annotated[AuthenticatedUser, Depends(require_admin)]
+StudentUser = Annotated[AuthenticatedUser, Depends(require_student)]
 DB = Annotated[AsyncSession, Depends(get_db)]
