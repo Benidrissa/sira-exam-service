@@ -746,3 +746,24 @@ class TeacherCourseSummary(BaseModel):
     student_count: int
     test_count: int
     avg_score: float | None
+
+
+# ---------------------------------------------------------------------------
+# FR-4.32 — Bulk term finalization
+# ---------------------------------------------------------------------------
+
+
+class FinalizeTermRequest(BaseModel):
+    class_id: uuid.UUID
+    academic_year: str = Field(..., min_length=1, max_length=16)
+    quarter: Quarter
+
+
+class FinalizeTermError(BaseModel):
+    student_id: uuid.UUID
+    reason: str
+
+
+class FinalizeTermResponse(BaseModel):
+    finalized_count: int
+    errors: list[FinalizeTermError]

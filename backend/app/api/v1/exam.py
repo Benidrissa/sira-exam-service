@@ -50,6 +50,8 @@ from app.schemas.exam import (
     ExamTestCreate,
     ExamTestResponse,
     ExamTestUpdate,
+    FinalizeTermRequest,
+    FinalizeTermResponse,
     GenerateBriefRequest,
     GenerationStatusResponse,
     GradeBandSchema,
@@ -884,6 +886,32 @@ async def list_access_grants(
 
     grants = await svc(db, org_id=_org(user))
     return [ExamAccessGrantResponse.model_validate(g) for g in grants]
+
+
+# ---------------------------------------------------------------------------
+# FR-4.32: Bulk term finalization
+# ---------------------------------------------------------------------------
+
+
+@router.post("/courses/{course_code}/finalize-term", response_model=FinalizeTermResponse)
+async def finalize_term(
+    course_code: str,
+    data: FinalizeTermRequest,
+    db: DB,
+    user: TeacherUser,
+) -> FinalizeTermResponse:
+    """Finalise term grades for a course+class+year+quarter (teacher/admin)."""
+    from app.domain.services import term_grade_service
+
+    result = await term_grade_service.finalize_term(
+        db,
+        org_id=_org(user),
+        course_code=course_code,
+        class_id=data.class_id,
+        academic_year=data.academic_year,
+        quarter=data.quarter.value,
+    )
+    return FinalizeTermResponse(**result)
 
 
 # ---------------------------------------------------------------------------
