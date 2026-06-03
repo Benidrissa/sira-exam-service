@@ -734,3 +734,174 @@
 - [ ] AC4: No paste-link input on student homepage
 
 ### Linked FRs: FR-4.25, FR-4.5, FR-4.6
+
+---
+
+## US-25: Teacher Sets Exam Weight
+
+**As a** Teacher
+**I want to** specify the percentage weight (coefficient) of each exam toward the final course grade
+**So that** midterms, finals, and quizzes contribute proportionally to student term averages
+
+### Preconditions
+- Teacher is authenticated with a valid JWT (`is_teacher=True`)
+- An ExamBank with `course_code` set exists with at least one published ExamTest
+
+### Steps
+1. Teacher: `POST /api/v1/exam/banks/{id}/tests` with `{title: "Midterm Q1", exam_weight: 30}` → 201, `exam_weight: 30` in response
+2. Teacher: `POST /api/v1/exam/banks/{id}/tests` with `{title: "Final Q1", exam_weight: 70}` → 201, `exam_weight: 70` in response
+3. Teacher: `GET /api/v1/exam/tests/{midtermId}` → `exam_weight: 30`
+4. Teacher: `PATCH /api/v1/exam/tests/{midtermId}` with `{exam_weight: 40}` → 200, `exam_weight: 40`
+5. Teacher views submission page → Course Grade Preview panel shows "Midterm 40%, Final 70%" with warning "Weights exceed 100%"
+6. Teacher corrects midterm to 30% → warning disappears; preview shows weighted avg
+
+### Acceptance Criteria
+- [ ] AC1: `exam_weight` stored and returned correctly on create and update
+- [ ] AC2: Omitting `exam_weight` on create defaults to `1.0`
+- [ ] AC3: `exam_weight` outside 0–100 returns 422
+- [ ] AC4: Submission view Course Grade Preview reflects current weights
+
+### Linked FRs: FR-4.26, FR-4.33
+
+---
+
+## US-26: Student Views Term Grade Card per Course
+
+**As a** Student
+**I want to** see my weighted average and letter grade per course on a dedicated page
+**So that** I understand my standing in each subject without manually calculating grades
+
+### Preconditions
+- Student is enrolled in at least one class with at least one closed (or `show_feedback=true`) test assigned
+- Teacher has set `exam_weight` on all tests; some attempts have been validated
+
+### Steps
+1. Student navigates to `/students/me/courses`
+2. Page shows one card per course: title, class name, academic year, quarter
+3. Each card contains a table: columns = Exam, Weight %, Score, Result
+4. Bottom of card: "Term Average: 72.0% — C"
+5. Student clicks a "Review" link on a passed exam → navigates to `/attempts/{id}/review`
+6. Dispensed exam row shows "Exempt" badge and is excluded from average
+7. Exam with `feedback_available=false` shows "—" score; not included in average
+
+### Acceptance Criteria
+- [ ] AC1: Weighted average formula correct (Σscore×weight / Σweight, dispensed excluded)
+- [ ] AC2: Letter grade derived from org grade scale (or default scale)
+- [ ] AC3: Feedback-unavailable exam scores hidden ("—")
+- [ ] AC4: Archived class sections collapsible with "Archived" badge
+- [ ] AC5: No courses → empty state "No course history yet"
+
+### Linked FRs: FR-4.27, FR-4.28, FR-4.31
+
+---
+
+## US-27: Teacher Grants Dispensation to Exempt a Student from an Exam
+
+**As a** Teacher
+**I want to** grant a student an exemption (dispensation) for a specific exam
+**So that** a student who was ill, had a documented conflict, or otherwise qualifies is not penalised with a zero
+
+### Preconditions
+- Teacher JWT; student is enrolled in the relevant class
+- The exam (`test_id`) exists and is assigned to the class
+
+### Steps
+1. Teacher: `POST /api/v1/exam/dispensations` with `{student_id, test_id, class_id, reason: "Documented medical absence"}` → 201
+2. `GET /api/v1/exam/tests/{testId}/dispensations` → shows the dispensation record
+3. Student (exempt): `POST /exam/tests/{testId}/attempts` even after `closes_at` → 200 (bypass gate)
+4. `GET /exam/tests/{testId}/submissions` → student row appears with `dispensed: true`, `score: null`
+5. `GET /exam/student/course-summary` → dispensed exam excluded from `weighted_avg` denominator
+6. Teacher: `DELETE /api/v1/exam/dispensations/{id}` → 200; student reverts to normal access rules
+
+### Acceptance Criteria
+- [ ] AC1: Dispensation grants attempt access outside normal window
+- [ ] AC2: Expired dispensation (`expires_at < now`) acts as no dispensation
+- [ ] AC3: Submission list marks student `dispensed: true`
+- [ ] AC4: Term average excludes dispensed exam weight from denominator
+- [ ] AC5: Revoking dispensation after student submits → 409
+- [ ] AC6: Duplicate dispensation (same student + test) → 409
+
+### Linked FRs: FR-4.29
+
+---
+
+## US-28: Teacher Finalizes Term Grades for a Course
+
+**As a** Teacher
+**I want to** trigger a bulk term finalization for a course after all exams are validated
+**So that** the system computes and stores an official term grade for each student
+
+### Preconditions
+- All ExamAttempt rows for the course+class+year+quarter have `validation_status=validated`
+- Teacher or admin JWT
+
+### Steps
+1. Teacher: `POST /exam/courses/{course_code}/finalize-term` with `{class_id, academic_year, quarter: "q1"}` → 200, `{finalized_count: 28, errors: []}`
+2. System creates one `TermGrade` row per enrolled student with `weighted_avg` and `grade_letter`
+3. Student: `GET /exam/student/course-summary` now shows the finalized grade letter on the course card
+4. Teacher revises a score complaint (FR-4.16), validates again, re-finalizes → old `TermGrade.superseded_by` points to new record; new record is authoritative
+5. Attempt endpoint: at least one attempt unvalidated → 422 with list of unvalidated attempt IDs
+
+### Acceptance Criteria
+- [ ] AC1: All attempts validated → 200 with `finalized_count` matching enrolled students
+- [ ] AC2: Unvalidated attempt → 422 with `unvalidated_attempt_ids`
+- [ ] AC3: Re-finalization supersedes old `TermGrade`
+- [ ] AC4: Student with only dispensed exams → `TermGrade.weighted_avg=null`, `grade_letter=null`
+- [ ] AC5: Non-teacher/admin → 403
+
+### Linked FRs: FR-4.32, FR-4.27
+
+---
+
+## US-29: Teacher Views Course Portfolio Dashboard
+
+**As a** Teacher
+**I want to** see all the courses I teach in a single dashboard
+**So that** I can quickly navigate to any course's submissions without searching through individual tests
+
+### Preconditions
+- Teacher JWT
+- Teacher has created ExamBanks with `course_code` set
+
+### Steps
+1. Teacher navigates to `/exams/courses`
+2. Page shows one card per unique course (grouped by `academic_year`)
+3. Each card: course name, course code, class count, student count, test count, average score
+4. Teacher clicks a course card → navigates to per-class submission view filtered by `course_code`
+5. Banks with no `course_code` → "Uncategorised" section at bottom
+
+### Acceptance Criteria
+- [ ] AC1: Cards show correct aggregated counts and average score
+- [ ] AC2: Archived classes still count toward `class_count` (with "Archived" label in drill-down)
+- [ ] AC3: Banks with `course_code=null` appear in "Uncategorised"
+- [ ] AC4: Clicking a card leads to filtered submission view for that course
+
+### Linked FRs: FR-4.30
+
+---
+
+## US-30: Admin Configures Grade Scale
+
+**As an** Admin
+**I want to** configure the letter grade scale for my organisation
+**So that** student term averages are converted to letter grades according to our institution's grading policy
+
+### Preconditions
+- Admin JWT (`is_admin=True`)
+
+### Steps
+1. Admin: `GET /exam/grade-scale` → returns default scale (0–59=F, 60–69=D, 70–79=C, 80–89=B, 90–100=A)
+2. Admin: `PUT /exam/grade-scale` with custom 10-grade scale (A+, A, A−, B+, …) → 200
+3. `GET /exam/grade-scale` → returns new custom scale
+4. Student: `GET /exam/student/course-summary` → `grade_letter` computed from the custom scale
+5. Admin submits overlapping ranges → 422 "Scale entries must not overlap"
+6. Admin: `PUT /exam/grade-scale` with default scale → resets to default; old custom entries removed
+
+### Acceptance Criteria
+- [ ] AC1: GET returns default scale when no custom scale configured
+- [ ] AC2: PUT by admin replaces entire scale atomically
+- [ ] AC3: Overlapping or gapped ranges → 422
+- [ ] AC4: Non-admin PUT → 403
+- [ ] AC5: FR-4.27 uses custom scale when available; falls back to default
+
+### Linked FRs: FR-4.28

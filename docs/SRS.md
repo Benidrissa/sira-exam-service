@@ -728,6 +728,169 @@ Endpoints: GET queue, GET session, GET snapshots (presigned URLs), POST acknowle
 
 ---
 
+### FR-4.26: Exam Weight / Coefficient per Test
+**GitHub Issue:** #182
+**Priority:** P1
+
+- FR-4.26.1: `ExamTest` gains a column `exam_weight FLOAT NOT NULL DEFAULT 1.0` (Migration 013). Valid range: 0.0–100.0, representing this exam's percentage contribution to the course term grade.
+- FR-4.26.2: `POST /exam/banks/{id}/tests` and `PATCH /exam/tests/{id}` accept an optional `exam_weight` field in the request body; defaults to `1.0` if omitted.
+- FR-4.26.3: All read endpoints that return test metadata (`GET /exam/tests/{id}`, `GET /exam/banks/{id}/tests`, `GET /exam/student/tests`) include `exam_weight` in the response.
+- FR-4.26.4: `GET /exam/tests/{id}/submissions` includes `exam_weight` per row so teachers can see each exam's relative importance while reviewing grades.
+- FR-4.26.5: `GET /exam/student/history` includes `exam_weight` per attempt row so students can see each exam's contribution.
+- FR-4.26.6: Migration 013 is reversible (downgrade removes column).
+
+**Acceptance Criteria:**
+- AC1: Create test with `exam_weight=30` → stored; `GET /exam/banks/{id}/tests` returns `exam_weight: 30`
+- AC2: PATCH test with `exam_weight=70` → updated; previous attempts unaffected
+- AC3: Omitting `exam_weight` on create → defaults to `1.0`
+- AC4: `exam_weight` outside 0–100 → 422 validation error
+- AC5: Student history and teacher submissions both include `exam_weight`
+
+---
+
+### FR-4.27: Term Score Aggregation per Course
+**GitHub Issue:** #183
+**Priority:** P1
+
+- FR-4.27.1: New endpoint `GET /exam/student/course-summary` returns a list grouped by `(course_code, course_name, class_id, class_name, academic_year, quarter)`.
+- FR-4.27.2: Each group contains `exams: [{test_id, test_title, exam_weight, score, passed, dispensed, feedback_available}]`.
+- FR-4.27.3: Weighted average formula: `weighted_avg = Σ(score × exam_weight) / Σ(exam_weight)` where the sum excludes dispensed exams (FR-4.29) and exams not yet submitted by the student.
+- FR-4.27.4: `grade_letter` is derived by looking up `weighted_avg` in the org's grade scale (FR-4.28); `null` if no scale configured.
+- FR-4.27.5: Scores and correct-answer details are only revealed when `feedback_available=true` (per FR-4.13 rules: `show_feedback=true` OR `closes_at < now`). If `feedback_available=false`, `score` is `null` in the response.
+- FR-4.27.6: Exams with no submitted attempt appear in the list with `score: null`, `passed: null`.
+- FR-4.27.7: Attempts without `course_code` (i.e., legacy attempts) are excluded from this endpoint.
+
+**Acceptance Criteria:**
+- AC1: Student with 2 exams in a course (weights 30 and 70, scores 80 and 60) → `weighted_avg = (80×30 + 60×70) / (30+70) = 66.0`
+- AC2: Dispensed exam excluded from denominator: if 3rd exam (weight 40) is dispensed → `weighted_avg = (80×30 + 60×70) / (30+70) = 66.0` (unchanged)
+- AC3: Exam with `feedback_available=false` → `score: null` in response; `weighted_avg` computed only from feedback-available exams
+- AC4: Student with no course-tagged attempts → empty array
+- AC5: Non-student role → 403
+
+---
+
+### FR-4.28: Grade Scale Configuration per Org
+**GitHub Issue:** #184
+**Priority:** P2
+
+- FR-4.28.1: New table `grade_scales(id UUID PK, org_id UUID indexed, min_score FLOAT, max_score FLOAT, letter VARCHAR(4), gpa_points FLOAT, sort_order INT)`.
+- FR-4.28.2: `GET /exam/grade-scale` (any authenticated user in org) returns the org's scale sorted by `sort_order` ascending.
+- FR-4.28.3: `PUT /exam/grade-scale` (admin only) accepts an array of `{min_score, max_score, letter, gpa_points}` entries; replaces the org's entire scale atomically.
+- FR-4.28.4: Default scale applied when no custom scale exists: 0–59=F/0.0, 60–69=D/1.0, 70–79=C/2.0, 80–89=B/3.0, 90–100=A/4.0.
+- FR-4.28.5: Scale entries must be non-overlapping and collectively cover 0–100; 422 if gaps or overlaps detected.
+- FR-4.28.6: Migration 013 creates the `grade_scales` table.
+
+**Acceptance Criteria:**
+- AC1: No custom scale → `GET /exam/grade-scale` returns default 5-entry scale
+- AC2: Admin PUTs custom scale → `GET /exam/grade-scale` returns new scale; old entries deleted
+- AC3: Overlapping entries → 422
+- AC4: Non-admin PUT → 403
+- AC5: FR-4.27 uses custom scale when configured; falls back to default
+
+---
+
+### FR-4.29: Exam Dispensation / Exemption
+**GitHub Issue:** #185
+**Priority:** P1
+
+- FR-4.29.1: New model `ExamDispensation(id UUID PK, org_id UUID indexed, student_id UUID, test_id UUID → ExamTest CASCADE, class_id UUID → SchoolClass CASCADE, reason TEXT NOT NULL, granted_by UUID, granted_at TIMESTAMPTZ, expires_at TIMESTAMPTZ nullable)`.
+- FR-4.29.2: `UniqueConstraint(test_id, student_id)` — one dispensation per student per test.
+- FR-4.29.3: `POST /exam/dispensations` (teacher or admin): creates dispensation; validates that student is enrolled in `class_id` (or is a member of any class that has this test assigned).
+- FR-4.29.4: `DELETE /exam/dispensations/{id}` (teacher or admin): revokes dispensation; fails with 409 if student has already submitted an attempt.
+- FR-4.29.5: `GET /exam/tests/{id}/dispensations` (teacher or admin): lists all dispensations for a test.
+- FR-4.29.6: FR-4.5 (attempt start gate) update: if an active, non-expired dispensation exists for the requesting student + test, bypass the enrollment + open-window check; allow attempt start.
+- FR-4.29.7: Teacher submission list (`GET /exam/tests/{id}/submissions`) includes dispensed students as rows with a `dispensed: true` flag and `score: null`.
+- FR-4.29.8: FR-4.27 term aggregation excludes dispensed exams from the `weighted_avg` denominator.
+- FR-4.29.9: Migration 013 creates the `exam_dispensations` table.
+
+**Acceptance Criteria:**
+- AC1: Teacher grants dispensation → student can start exam even if enrollment window is closed
+- AC2: Expired dispensation (`expires_at < now`) → treated as no dispensation; student blocked by normal gate
+- AC3: Teacher revokes dispensation → student reverts to normal access rules
+- AC4: Revoke dispensation after attempt submitted → 409 conflict
+- AC5: Dispensed student appears in submission list with `dispensed: true`, no score
+- AC6: Duplicate dispensation (same student + test) → 409
+
+---
+
+### FR-4.30: Teacher Course Portfolio Dashboard
+**GitHub Issue:** #186
+**Priority:** P2
+
+- FR-4.30.1: New endpoint `GET /exam/teacher/courses?academic_year=<str>&quarter=<q1|q2|q3|q4>` (teacher only).
+- FR-4.30.2: Returns a list of unique `(course_code, course_name, academic_year)` tuples derived from `ExamBank` rows where `created_by = current_user.user_id AND org_id = current_user.org_id`.
+- FR-4.30.3: Each entry includes: `course_code`, `course_name`, `academic_year`, `class_count` (distinct classes with this course assigned), `student_count` (distinct students enrolled in those classes), `test_count` (published tests in the course), `avg_score` (mean `total_score` across all validated attempts in this course, `null` if none).
+- FR-4.30.4: Frontend page `/exams/courses` lists the teacher's course cards, each linking to `/exams/courses/{course_code}` which drills into per-class submissions (reusing FR-4.22 grouped submission view filtered by `course_code`).
+- FR-4.30.5: Banks with `course_code = null` are grouped under an "Uncategorised" entry.
+
+**Acceptance Criteria:**
+- AC1: Teacher with 2 courses and 3 classes → 2 course cards returned
+- AC2: `class_count` = number of distinct classes that have at least one TestAssignment for this course
+- AC3: `avg_score` is `null` when no validated attempts exist
+- AC4: Banks with no `course_code` appear in "Uncategorised" group
+- AC5: Non-teacher → 403
+
+---
+
+### FR-4.31: Student Term Report Page
+**GitHub Issue:** #187
+**Priority:** P2
+
+- FR-4.31.1: New frontend page `/students/me/courses` fetches `GET /exam/student/course-summary` and renders one card per `(course_code, class_id, academic_year, quarter)` group.
+- FR-4.31.2: Each card displays: course name + code, class name, academic year, quarter badge, a table of exams with columns (title, weight %, score, passed/failed badge), the computed weighted average, and the letter grade.
+- FR-4.31.3: Cards are grouped by `academic_year` (descending). Within a year, archived classes (FR-4.19) are collapsible with an "Archived" badge.
+- FR-4.31.4: Each exam row links to `/attempts/{attemptId}/review` when `feedback_available=true` and an attempt exists.
+- FR-4.31.5: Exams with no submitted attempt show a "—" score and a "Not attempted" note.
+- FR-4.31.6: Dispensed exams show a "Exempt" badge instead of a score.
+- FR-4.31.7: A "My Exams" breadcrumb link navigates back to `/students/me/attempts`.
+
+**Acceptance Criteria:**
+- AC1: Student with 2 courses → 2 course cards visible
+- AC2: Archived class → section collapsed with "Archived" badge
+- AC3: Dispensed exam → "Exempt" badge, no score, excluded from weighted avg
+- AC4: No courses → empty state "No course history yet"
+- AC5: `feedback_available=false` exam row → score shown as "—" (not the raw number)
+
+---
+
+### FR-4.32: Bulk Term Finalization
+**GitHub Issue:** #188
+**Priority:** P2
+
+- FR-4.32.1: New model `TermGrade(id UUID PK, org_id UUID indexed, student_id UUID, course_code VARCHAR(32), class_id UUID → SchoolClass, academic_year VARCHAR(16), quarter ENUM(q1,q2,q3,q4), weighted_avg FLOAT, grade_letter VARCHAR(4), finalized_at TIMESTAMPTZ, superseded_by UUID → TermGrade nullable)`.
+- FR-4.32.2: `POST /exam/courses/{course_code}/finalize-term` (teacher or admin) with body `{class_id, academic_year, quarter}`.
+- FR-4.32.3: Guard: all `ExamAttempt` rows for all tests in the course+class+year+quarter combination must have `validation_status=validated`; else 422 with list of unvalidated attempt IDs.
+- FR-4.32.4: Recomputes `weighted_avg` and `grade_letter` for every enrolled student; students with only dispensed exams get `weighted_avg=null`.
+- FR-4.32.5: Idempotent: if a `TermGrade` already exists for the same `(student_id, course_code, class_id, academic_year, quarter)`, the old record's `superseded_by` is set to the new record's ID.
+- FR-4.32.6: Response: `{finalized_count: int, errors: [{student_id, reason}]}`.
+- FR-4.32.7: Migration 013 creates the `term_grades` table.
+
+**Acceptance Criteria:**
+- AC1: All attempts validated → endpoint succeeds; one `TermGrade` row per enrolled student
+- AC2: Unvalidated attempt → 422 with `{unvalidated_attempt_ids: [...]}`
+- AC3: Re-finalization → old record superseded; new record is authoritative
+- AC4: Student with only dispensed exams → `TermGrade.weighted_avg = null`, `grade_letter = null`
+- AC5: Non-teacher/admin → 403
+
+---
+
+### FR-4.33: Exam Coefficient Input in Teacher UI
+**GitHub Issue:** #189
+**Priority:** P2
+
+- FR-4.33.1: In the exam test create modal and edit form, add a numeric input field for `exam_weight` (label: "Weight (% of course grade)", range 0–100, default 1.0, step 0.5).
+- FR-4.33.2: In the per-course / per-class submission view (FR-4.22), display a "Course Grade Preview" panel that shows each test's weight and a live weighted-average preview based on current scores.
+- FR-4.33.3: The preview panel warns (non-blocking) if the sum of exam weights for a course+quarter exceeds 100%.
+- FR-4.33.4: Both the create and edit form validate `exam_weight` client-side before submit: must be a number between 0 and 100.
+
+**Acceptance Criteria:**
+- AC1: Create test → `exam_weight` input visible and pre-filled with 1.0
+- AC2: Submit with `exam_weight=40` → PATCH succeeds; submissions view shows "40%" weight label
+- AC3: Weights summing to 110% → warning banner visible in preview panel; form still submittable
+- AC4: `exam_weight` outside 0–100 → client-side validation error, form not submitted
+
+---
+
 ## 7. Non-Functional Requirements
 
 ### 5.1 Performance
@@ -815,4 +978,14 @@ Endpoints: GET queue, GET session, GET snapshots (presigned URLs), POST acknowle
 | FR-4.21 | — | US-22 | 4 |
 | FR-4.22 | — | US-20 | 4 |
 | FR-4.23 | — | US-21 | 4 |
+| FR-4.24 | #161 | US-23 | 4 |
+| FR-4.25 | #175 | US-24 | 4 |
+| FR-4.26 | #182 | US-25 | 4 |
+| FR-4.27 | #183 | US-26 | 4 |
+| FR-4.28 | #184 | US-30 | 4 |
+| FR-4.29 | #185 | US-27 | 4 |
+| FR-4.30 | #186 | US-29 | 4 |
+| FR-4.31 | #187 | US-26 | 4 |
+| FR-4.32 | #188 | US-28 | 4 |
+| FR-4.33 | #189 | US-25 | 4 |
 | FR-4.24 | #161 | US-23 | 4 |

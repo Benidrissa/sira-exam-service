@@ -155,6 +155,31 @@ ScoreComplaint
   reviewed_at: datetime | null
   UniqueConstraint(attempt_id, question_id) [question-level]
   PartialUniqueIndex(attempt_id) WHERE question_id IS NULL [total-score]
+
+ExamTest (extended — Migration 013)
+  + exam_weight: float (default 1.0, range 0–100)
+    → % contribution of this exam to course term grade
+
+ExamDispensation  [Migration 013]
+  id, org_id (indexed), student_id, test_id → ExamTest CASCADE
+  class_id → SchoolClass CASCADE
+  reason: text, granted_by, granted_at
+  expires_at: timestamptz | null
+  UniqueConstraint(test_id, student_id)
+  → Exempts a student from an exam; bypasses FR-4.5 access gate
+
+GradeScale  [Migration 013]
+  id, org_id (indexed), min_score, max_score
+  letter: varchar(4), gpa_points: float, sort_order: int
+  → Org-configurable letter grade thresholds; default = A/B/C/D/F
+
+TermGrade  [Migration 013]
+  id, org_id (indexed), student_id, course_code: varchar(32)
+  class_id → SchoolClass, academic_year, quarter: q1|q2|q3|q4
+  weighted_avg: float | null, grade_letter: varchar(4) | null
+  finalized_at: timestamptz
+  superseded_by → TermGrade | null
+  → Snapshot of term grade; re-finalization links old → new via superseded_by
 ```
 
 ### Phase 2 (extends Phase 1)
