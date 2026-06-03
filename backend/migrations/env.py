@@ -54,6 +54,9 @@ async def run_async_migrations() -> None:
     )
     async with connectable.connect() as connection:
         await connection.run_sync(do_run_migrations)
+        # run_sync drives the migrations on the sync facade; the outer async
+        # connection must be committed explicitly or the DDL is rolled back.
+        await connection.commit()
     await connectable.dispose()
 
 
