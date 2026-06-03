@@ -575,6 +575,24 @@ async def create_exam_test(
     )
 
 
+@router.get("/tests/{test_id}", response_model=ExamTestResponse)
+async def get_exam_test(test_id: uuid.UUID, user: TeacherUser, db: DB) -> object:
+    """Fetch a single ExamTest (org-scoped) — includes exam_weight (FR-4.26)."""
+    from sqlalchemy import select
+
+    from app.domain.models.exam import ExamBank, ExamTest
+
+    result = await db.execute(
+        select(ExamTest)
+        .join(ExamBank, ExamTest.bank_id == ExamBank.id)
+        .where(ExamTest.id == test_id, ExamBank.org_id == _org(user))
+    )
+    test = result.scalar_one_or_none()
+    if not test:
+        raise HTTPException(status_code=404, detail="ExamTest not found")
+    return test
+
+
 @router.patch("/tests/{test_id}", response_model=ExamTestResponse)
 async def update_exam_test(
     test_id: uuid.UUID,

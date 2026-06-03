@@ -101,6 +101,12 @@ export const listExamBanks = () => apiFetch<ExamBank[]>("/exam/banks");
 export const listBankTests = (bankId: string) =>
   apiFetch<ExamTest[]>(`/exam/banks/${bankId}/tests`);
 
+export const getTest = (testId: string) =>
+  apiFetch<ExamTest>(`/exam/tests/${testId}`);
+
+export const patchTest = (testId: string, data: Partial<ExamTest>) =>
+  apiFetch<ExamTest>(`/exam/tests/${testId}`, { method: "PATCH", body: JSON.stringify(data) });
+
 // ---------------------------------------------------------------------------
 // ExamSource
 // ---------------------------------------------------------------------------
