@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, Field
 
 
 class LoginRequest(BaseModel):
-    email: EmailStr
+    # A login identifier, not a signup field — keep it a plain string so reserved
+    # TLDs (e.g. *.test) and other valid-but-unusual addresses can authenticate.
+    email: str = Field(..., min_length=3, max_length=255)
     password: str = Field(..., min_length=1)
 
 
