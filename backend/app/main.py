@@ -9,6 +9,7 @@ import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.v1.auth import router as auth_router
 from app.api.v1.exam import router as exam_router
 from app.api.v1.proctor import router as proctor_router
 from app.api.v1.proctor_monitor import router as proctor_monitor_router
@@ -55,6 +56,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth_router, prefix="/api/v1")
 app.include_router(exam_router, prefix="/api/v1")
 app.include_router(proctor_router, prefix="/api/v1")
 app.include_router(ws_router)
