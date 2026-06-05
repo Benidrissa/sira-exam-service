@@ -150,6 +150,15 @@ export default function LoginPage() {
           )}
         </button>
       </form>
+
+      <a
+        href="/manuals/uat-guide-fr.html"
+        target="_blank"
+        rel="noopener"
+        className="mt-6 text-xs text-blue-200/70 hover:text-white transition-colors underline underline-offset-4"
+      >
+        Guide de test
+      </a>
     </main>
   );
 }
