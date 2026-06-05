@@ -17,7 +17,9 @@ services:
     restart: unless-stopped
     env_file: .env
     environment:
-      - DEBUG=true
+      # Real password login is the only auth path; the /dev/tokens bypass is
+      # only mounted when DEBUG=true, so keep it off in the shared/UAT env.
+      - DEBUG=false
       - FRONTEND_URL=https://sira-exam.elearning.portfolio2.kimbetien.com
     networks:
       - sira-exam

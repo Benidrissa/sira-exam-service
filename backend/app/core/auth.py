@@ -6,10 +6,37 @@ and reads user_id, role, org_id from claims. No database lookup required.
 
 from __future__ import annotations
 
+import uuid
+from datetime import UTC, datetime, timedelta
+
 import jwt
 from fastapi import HTTPException, status
 
 from app.core.config import settings
+
+# Access tokens are valid for 24h, matching the previous dev-token lifetime.
+ACCESS_TOKEN_TTL = timedelta(hours=24)
+
+
+def create_access_token(
+    *, user_id: uuid.UUID | str, role: str, org_id: uuid.UUID | str
+) -> tuple[str, datetime]:
+    """Mint a JWT with the exact claims verify_sira_token reads.
+
+    Returns (token, expires_at). Signed with the same secret/algorithm the app
+    already validates, so every existing endpoint accepts it unchanged.
+    """
+    exp = datetime.now(UTC) + ACCESS_TOKEN_TTL
+    payload = {
+        "sub": str(user_id),
+        "role": role,
+        "org_id": str(org_id),
+        "exp": exp,
+        "iat": datetime.now(UTC),
+        "iss": "sira-exam",
+    }
+    token = jwt.encode(payload, settings.sira_jwt_secret, algorithm=settings.jwt_algorithm)
+    return token, exp
 
 
 class AuthenticatedUser:
