@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Guide de test — Sira Exam</title>
+<style>
+  :root{
+    --ink:#1f2937; --muted:#6b7280; --line:#e5e7eb; --bg:#ffffff;
+    --brand:#1d4ed8; --brand-soft:#eff6ff; --warn:#b45309; --warn-soft:#fffbeb;
+    --ok:#047857; --ok-soft:#ecfdf5; --chip:#eef2ff;
+  }
+  *{box-sizing:border-box}
+  body{
+    font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+    color:var(--ink); background:#f3f4f6; margin:0; line-height:1.5; font-size:14px;
+  }
+  .page{max-width:880px; margin:24px auto; background:var(--bg); padding:32px 40px;
+        box-shadow:0 1px 4px rgba(0,0,0,.08); border-radius:10px;}
+  header.top{border-bottom:2px solid var(--line); padding-bottom:16px; margin-bottom:20px;}
+  h1{font-size:22px; margin:0 0 4px;}
+  h2{font-size:16px; margin:26px 0 10px; color:var(--brand);
+     border-left:4px solid var(--brand); padding-left:10px;}
+  h3{font-size:14px; margin:18px 0 6px;}
+  p{margin:8px 0;}
+  a{color:var(--brand);}
+  code{background:#f3f4f6; padding:1px 5px; border-radius:4px; font-size:12.5px;
+       font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;}
+  .kbd{display:inline-block; border:1px solid var(--line); border-bottom-width:2px;
+       border-radius:5px; padding:0 6px; font-size:12px; background:#fff;}
+  .lbl{font-weight:600; white-space:nowrap;}
+  .url{font-size:13px; color:var(--muted);}
+  .box{border:1px solid var(--line); border-radius:8px; padding:14px 16px; margin:14px 0;}
+  .creds{background:var(--brand-soft); border-color:#bfdbfe;}
+  .warn{background:var(--warn-soft); border-color:#fde68a;}
+  .note{background:var(--ok-soft); border-color:#a7f3d0;}
+  .chip{display:inline-block; background:var(--chip); color:#3730a3; border-radius:999px;
+        padding:1px 9px; font-size:12px; font-weight:600; margin-left:6px;}
+  table{border-collapse:collapse; width:100%; margin:10px 0 4px; font-size:13.5px;}
+  th,td{border:1px solid var(--line); padding:8px 10px; vertical-align:top; text-align:left;}
+  th{background:#f9fafb; font-weight:600;}
+  td.n{width:34px; text-align:center; color:var(--muted); font-weight:600;}
+  td.ok{width:64px; text-align:center;}
+  .creds table{font-size:13px;} .creds td:first-child{font-weight:600;}
+  ul{margin:6px 0 6px 18px; padding:0;} li{margin:3px 0;}
+  footer{margin-top:28px; border-top:1px solid var(--line); padding-top:12px;
+         color:var(--muted); font-size:12px;}
+  @media print{
+    body{background:#fff;} .page{box-shadow:none; margin:0; max-width:none; border-radius:0; padding:0 8mm;}
+    h2{break-after:avoid;} table,.box{break-inside:avoid;}
+    a{color:var(--ink); text-decoration:none;}
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+<header class="top">
+  <h1>Guide de test — Sira Exam <span class="chip">UAT</span></h1>
+  <p class="url">Plateforme&nbsp;: <a href="https://sira-exam.elearning.portfolio2.kimbetien.com">https://sira-exam.elearning.portfolio2.kimbetien.com</a></p>
+  <p>Ce guide permet de reproduire manuellement les parcours principaux de la plateforme
+     (enseignant, étudiant, administrateur). Comptez environ 15&nbsp;minutes. Suivez les étapes dans
+     l'ordre et cochez la colonne <em>Résultat</em>.</p>
+</header>
+
+<div class="box creds">
+  <h3 style="margin-top:0">Identifiants de connexion</h3>
+  <table>
+    <tr><th>Rôle</th><th>Email</th><th>Mot de passe</th></tr>
+    <tr><td>Enseignant</td><td><code>teacher@sira.test</code></td><td><code>Willow-Ember44*</code></td></tr>
+    <tr><td>Étudiant</td><td><code>student@sira.test</code></td><td><code>Ember-Quartz61&amp;</code></td></tr>
+    <tr><td>Administrateur</td><td><code>admin@sira.test</code></td><td><code>Cobalt-Meadow88%</code></td></tr>
+  </table>
+  <p style="margin-bottom:0; color:var(--warn)"><strong>Confidentiel&nbsp;:</strong> cette page est
+     accessible via son lien et contient des mots de passe réels. Ne diffusez pas l'URL au-delà des
+     testeurs autorisés.</p>
+</div>
+
+<div class="box warn">
+  <h3 style="margin-top:0">Avant de commencer</h3>
+  <ul>
+    <li>Utilisez un navigateur récent&nbsp;: <strong>Google Chrome</strong> ou <strong>Microsoft Edge</strong>.</li>
+    <li>Les examens sont <strong>surveillés</strong> (proctoring)&nbsp;: lorsque le navigateur le demande,
+        <strong>autorisez la caméra</strong> et <strong>acceptez le plein écran</strong>. Sans cela,
+        les questions de l'examen restent masquées.</li>
+    <li>L'interface s'affiche en <strong>anglais</strong> même sur l'adresse <code>/fr/</code>.
+        Dans ce guide, les libellés des boutons sont cités tels qu'ils apparaissent à l'écran,
+        entre guillemets&nbsp;: ex. «&nbsp;Sign in&nbsp;».</li>
+    <li>Pour vous déconnecter entre deux rôles&nbsp;: bouton «&nbsp;Logout&nbsp;» en haut à droite.</li>
+  </ul>
+</div>
+
+<h2>Connexion (commun à tous les rôles)</h2>
+<table>
+  <tr><th class="n">#</th><th>Action</th><th>Résultat attendu</th><th class="ok">Résultat</th></tr>
+  <tr><td class="n">1</td>
+      <td>Ouvrir <a href="https://sira-exam.elearning.portfolio2.kimbetien.com/fr/login">…/fr/login</a>.</td>
+      <td>Page de connexion avec les champs «&nbsp;Email&nbsp;» et «&nbsp;Password&nbsp;».</td><td class="ok">☐</td></tr>
+  <tr><td class="n">2</td>
+      <td>Saisir l'email et le mot de passe du rôle souhaité, puis cliquer «&nbsp;Sign in&nbsp;».</td>
+      <td>Connexion réussie&nbsp;; redirection vers l'accueil. Un mauvais mot de passe affiche
+          «&nbsp;Invalid email or password.&nbsp;».</td><td class="ok">☐</td></tr>
+</table>
+
+<h2>Scénario 1 — Enseignant</h2>
+<p class="url">Connecté en tant que <code>teacher@sira.test</code>.</p>
+<table>
+  <tr><th class="n">#</th><th>Action</th><th>Résultat attendu</th><th class="ok">Résultat</th></tr>
+  <tr><td class="n">1</td>
+      <td>Sur l'accueil «&nbsp;My Exam Banks&nbsp;», repérer un examen publié (badge «&nbsp;published&nbsp;»).</td>
+      <td>La liste des banques d'examens s'affiche.</td><td class="ok">☐</td></tr>
+  <tr><td class="n">2</td>
+      <td>Sur une banque publiée, cliquer «&nbsp;Submissions&nbsp;».</td>
+      <td>Page «&nbsp;Student Submissions&nbsp;»&nbsp;: copies regroupées par classe, et en haut le
+          panneau «&nbsp;Course Grade Preview&nbsp;».</td><td class="ok">☐</td></tr>
+  <tr><td class="n">3</td>
+      <td>Dans «&nbsp;Course Grade Preview&nbsp;», cliquer «&nbsp;Edit weight&nbsp;». Saisir une valeur
+          dans «&nbsp;Weight (% of course grade)&nbsp;» (ex. <code>40</code>) puis «&nbsp;Save&nbsp;».</td>
+      <td>Message «&nbsp;Exam weight saved&nbsp;». De retour sur «&nbsp;Submissions&nbsp;», le poids
+          affiché reflète la nouvelle valeur (ex. «&nbsp;40%&nbsp;»).</td><td class="ok">☐</td></tr>
+  <tr><td class="n">4</td>
+      <td>Revenir à la banque et cliquer «&nbsp;Grading&nbsp;». Pour une réponse de dissertation,
+          saisir une note dans «&nbsp;Score (0–100)&nbsp;» puis «&nbsp;Save &amp; Release&nbsp;».</td>
+      <td>La dissertation passe au statut révisé (note humaine enregistrée).</td><td class="ok">☐</td></tr>
+  <tr><td class="n">5</td>
+      <td>Retourner sur «&nbsp;Submissions&nbsp;», puis cliquer «&nbsp;Validate&nbsp;» sur une copie en attente.</td>
+      <td>Message «&nbsp;Attempt validated&nbsp;»&nbsp;; le statut passe à «&nbsp;Validated&nbsp;».
+          <em>Note&nbsp;:</em> si la copie contient une dissertation non notée, la validation est refusée
+          tant que l'étape&nbsp;4 n'est pas faite (comportement normal).</td><td class="ok">☐</td></tr>
+</table>
+
+<h2>Scénario 2 — Étudiant</h2>
+<p class="url">Connecté en tant que <code>student@sira.test</code> (déconnectez d'abord l'enseignant).</p>
+<table>
+  <tr><th class="n">#</th><th>Action</th><th>Résultat attendu</th><th class="ok">Résultat</th></tr>
+  <tr><td class="n">1</td>
+      <td>Sur l'accueil «&nbsp;My Scheduled Exams&nbsp;», repérer un examen avec le bouton «&nbsp;Start Exam&nbsp;».</td>
+      <td>La liste des examens planifiés s'affiche (et non plus une page vide).</td><td class="ok">☐</td></tr>
+  <tr><td class="n">2</td>
+      <td>Cliquer «&nbsp;Start Exam&nbsp;». <strong>Autoriser la caméra</strong> et
+          <strong>accepter le plein écran</strong> si demandé.</td>
+      <td>Les questions s'affichent (un indicateur «&nbsp;REC&nbsp;» de surveillance apparaît).
+          <em>Si l'écran indique «&nbsp;Fullscreen Required&nbsp;», cliquer «&nbsp;Return to Fullscreen&nbsp;».</em></td><td class="ok">☐</td></tr>
+  <tr><td class="n">3</td>
+      <td>Répondre à chaque question à choix («&nbsp;MCQ&nbsp;») et rédiger la dissertation
+          («&nbsp;DISSERTATION&nbsp;») dans la zone de texte.</td>
+      <td>Le compteur «&nbsp;X answered&nbsp;» augmente à chaque réponse.</td><td class="ok">☐</td></tr>
+  <tr><td class="n">4</td>
+      <td>Cliquer «&nbsp;Submit Exam&nbsp;» puis confirmer «&nbsp;Submit Now&nbsp;».</td>
+      <td>Redirection vers la page de résultats («&nbsp;Exam Submitted&nbsp;» / score préliminaire des QCM).</td><td class="ok">☐</td></tr>
+  <tr><td class="n">5</td>
+      <td>Aller sur «&nbsp;My Courses&nbsp;» (menu / <code>/fr/students/me/courses</code>).
+          <em>(Après que l'enseignant a noté la dissertation — scénario&nbsp;1, étape&nbsp;4.)</em></td>
+      <td>Une fiche de cours affiche l'examen, son poids, le score, la
+          <strong>moyenne pondérée</strong> et la <strong>lettre</strong> (note de période).</td><td class="ok">☐</td></tr>
+</table>
+
+<h2>Scénario 3 — Administrateur</h2>
+<p class="url">Connecté en tant que <code>admin@sira.test</code>.</p>
+<table>
+  <tr><th class="n">#</th><th>Action</th><th>Résultat attendu</th><th class="ok">Résultat</th></tr>
+  <tr><td class="n">1</td>
+      <td>Se connecter avec le compte administrateur.</td>
+      <td>Accès accordé&nbsp;; l'administrateur dispose des mêmes vues que l'enseignant.</td><td class="ok">☐</td></tr>
+  <tr><td class="n">2</td>
+      <td><strong>Barème de notation (lettres/GPA)</strong>&nbsp;: il n'existe pas encore d'écran dédié.
+          La configuration se fait par l'API&nbsp;: <code>PUT /api/v1/exam/grade-scale</code>
+          (jeton admin obtenu via <code>POST /api/v1/auth/login</code>).</td>
+      <td>Le barème de l'organisation est mis à jour (sinon, un barème par défaut F/D/C/B/A s'applique).</td><td class="ok">☐</td></tr>
+</table>
+
+<div class="box note">
+  <h3 style="margin-top:0">Remarques &amp; limites connues</h3>
+  <ul>
+    <li><strong>Surveillance plein écran</strong>&nbsp;: les examens exigent la caméra et le plein écran —
+        comportement attendu en conditions réelles.</li>
+    <li><strong>Validation d'une copie</strong>&nbsp;: une dissertation doit être notée par l'enseignant
+        avant de pouvoir «&nbsp;Validate&nbsp;» la copie.</li>
+    <li><strong>Barème administrateur</strong>&nbsp;: configurable uniquement par l'API pour l'instant
+        (pas encore d'interface).</li>
+    <li><strong>Affichage</strong>&nbsp;: la mention «&nbsp;Passed&nbsp;» (réussite par examen) et la lettre
+        de période peuvent différer (ex. 50&nbsp;% = «&nbsp;Passed&nbsp;» mais lettre «&nbsp;F&nbsp;» sur le
+        barème par défaut 0–60=F).</li>
+  </ul>
+</div>
+
+<footer>
+  Guide de test Sira Exam — environnement de pré-production (staging). Document interne, à conserver confidentiel.
+</footer>
+
+</div>
+</body>
+</html>
