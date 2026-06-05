@@ -437,12 +437,18 @@ async def get_student_available_tests(
 
     rows = []
     for a in assignments:
-        # Check if the student has an attempt for this test
+        # Check if the student has an attempt for this test. A student may have
+        # more than one row (e.g. an abandoned, unsubmitted attempt plus a later
+        # one), so take the most recent — scalar_one_or_none() would raise
+        # MultipleResultsFound and 500 the whole scheduled-exams dashboard.
         attempt_result = await db.execute(
-            select(ExamAttempt).where(
+            select(ExamAttempt)
+            .where(
                 ExamAttempt.test_id == a.test_id,
                 ExamAttempt.user_id == user_id,
             )
+            .order_by(ExamAttempt.attempted_at.desc())
+            .limit(1)
         )
         attempt = attempt_result.scalar_one_or_none()
 
