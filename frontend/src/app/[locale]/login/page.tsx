@@ -9,14 +9,6 @@ import { cn } from "@/lib/utils";
 
 const API_URL = process.env.NEXT_PUBLIC_EXAM_API_URL ?? "http://localhost:8001/api/v1";
 
-function roleFromEmail(email: string): "expert" | "user" | "admin" | "sub_admin" {
-  const lower = email.toLowerCase();
-  if (lower.includes("teacher") || lower.includes("expert")) return "expert";
-  if (lower.includes("sub_admin") || lower.includes("sub.admin")) return "sub_admin";
-  if (lower.includes("admin")) return "admin";
-  return "user";
-}
-
 export default function LoginPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -39,11 +31,19 @@ export default function LoginPage() {
 
     setLoading(true);
     try {
-      const role = roleFromEmail(email);
-      const params = new URLSearchParams({ role });
-      if (role === "user") params.set("email", email.trim().toLowerCase());
-      const res = await fetch(`${API_URL}/dev/tokens?${params.toString()}`);
-      if (!res.ok) throw new Error(`Server returned ${res.status} — is the backend running with DEBUG=true?`);
+      const res = await fetch(`${API_URL}/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
+      });
+      if (!res.ok) {
+        const detail = await res.json().catch(() => null);
+        throw new Error(
+          res.status === 401
+            ? "Invalid email or password."
+            : (detail?.detail ?? `Sign in failed (${res.status}).`)
+        );
+      }
       const data = await res.json();
       document.cookie = `access_token=${data.access_token}; path=/; SameSite=Lax; max-age=86400`;
       const isLoginPage = !redirect || redirect.includes("/login") || redirect === "/" || redirect.match(/^\/[a-z]{2}\/?$/);
@@ -150,21 +150,6 @@ export default function LoginPage() {
           )}
         </button>
       </form>
-
-      {/* Staging badge with test credentials */}
-      {process.env.NODE_ENV !== "production" && (
-        <div className="mt-8 space-y-2 text-center">
-          <span className="inline-flex items-center rounded-full border border-amber-400/30 bg-amber-400/20 px-3 py-1 text-xs text-amber-200">
-            Staging — use test credentials below
-          </span>
-          <div className="text-xs text-blue-300/70 space-y-0.5">
-            <p>teacher@sira.test · test1234 → Teacher</p>
-            <p>student01@sira.test · test1234 → Student A</p>
-            <p>student02@sira.test · test1234 → Student B</p>
-            <p>admin@sira.test · test1234 → Admin</p>
-          </div>
-        </div>
-      )}
     </main>
   );
 }

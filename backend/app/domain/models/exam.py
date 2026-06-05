@@ -642,3 +642,28 @@ class TermGrade(Base):
         ForeignKey("term_grades.id", ondelete="SET NULL"),
         nullable=True,
     )
+
+
+class User(Base):
+    """A login account for the exam service (real password authentication).
+
+    The exam service is otherwise stateless about identity (it trusts JWT
+    claims), but this table backs the password-login endpoint. user_id columns
+    elsewhere reference this id by value (no FK, to stay compatible with
+    externally-issued identities).
+    """
+
+    __tablename__ = "users"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    email: Mapped[str] = mapped_column(String(255), nullable=False, unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    role: Mapped[str] = mapped_column(String(16), nullable=False, default="user")
+    org_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    failed_password_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    password_locked_until: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
