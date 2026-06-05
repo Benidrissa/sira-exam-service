@@ -14,6 +14,14 @@ from fastapi import HTTPException
 from app.core.config import settings
 from app.domain.models.exam import User
 from app.domain.services import auth_service, password_service
+from app.schemas.auth import LoginRequest
+
+
+def test_login_request_accepts_reserved_tld() -> None:
+    # *.test is a reserved TLD that strict EmailStr rejects; login must accept it.
+    req = LoginRequest(email="teacher@sira.test", password="x")
+    assert req.email == "teacher@sira.test"
+
 
 ORG = uuid.UUID("aaaaaaaa-0000-0000-0000-000000000001")
 UID = uuid.UUID("cccccccc-0000-0000-0000-000000000001")
