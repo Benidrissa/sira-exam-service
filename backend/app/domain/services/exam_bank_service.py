@@ -132,11 +132,19 @@ async def ensure_default_test(
     used to leave it with no ``ExamTest`` row, which made the teacher action buttons
     (Submissions/Schedule/Grading/Copy Student Link) inert and prevented scheduling a
     test to a class (so students never saw it). This backfills a usable test.
+
+    Concurrency: ``exam_tests`` has no unique constraint on ``bank_id`` (a bank may have
+    several tests via ``create_test``), so a plain check-then-insert could race two
+    concurrent callers into duplicate default tests. We take a row lock on the bank
+    first (``SELECT ... FOR UPDATE``) to serialize the check-then-insert per bank.
     """
+    # Serialize per-bank so concurrent callers (e.g. two list GETs) can't both insert.
+    await db.execute(select(ExamBank.id).where(ExamBank.id == bank.id).with_for_update())
+
     existing = await db.execute(
         select(ExamTest).where(ExamTest.bank_id == bank.id).limit(1)
     )
-    test = existing.scalar_one_or_none()
+    test = existing.scalars().first()
     if test is not None:
         return test
     test = ExamTest(

@@ -174,9 +174,10 @@ async def test_ensure_default_test_creates_when_missing() -> None:
     bank = _make_bank()
     bank.status = BankStatus.published
 
-    # No existing test for this bank
+    # No existing test for this bank (the bank-row lock SELECT shares this mock; its
+    # result is ignored by the helper)
     mock_result = MagicMock()
-    mock_result.scalar_one_or_none.return_value = None
+    mock_result.scalars.return_value.first.return_value = None
     db.execute = AsyncMock(return_value=mock_result)
 
     test = await ensure_default_test(db, bank=bank, created_by=USER_ID)
@@ -203,7 +204,7 @@ async def test_ensure_default_test_is_idempotent() -> None:
         status=TestStatus.published,
     )
     mock_result = MagicMock()
-    mock_result.scalar_one_or_none.return_value = existing
+    mock_result.scalars.return_value.first.return_value = existing
     db.execute = AsyncMock(return_value=mock_result)
 
     test = await ensure_default_test(db, bank=bank, created_by=USER_ID)
