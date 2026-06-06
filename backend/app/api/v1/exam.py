@@ -529,6 +529,10 @@ async def validate_all_questions(
     validated_count, bank = await exam_question_service.validate_all_and_publish(
         db, bank_id=bank_id, org_id=_org(user)
     )
+    # Publishing must leave the bank with a usable test, otherwise the teacher action
+    # buttons (Submissions/Schedule/Grading/Copy Student Link) stay inert and the test
+    # can never be scheduled to a class for students. Idempotent.
+    await exam_bank_service.ensure_default_test(db, bank=bank, created_by=_uid(user))
     return BulkValidationResponse(
         bank_id=bank_id,
         validated_count=validated_count,
@@ -549,7 +553,11 @@ async def list_exam_tests(bank_id: uuid.UUID, user: TeacherUser, db: DB) -> list
     from app.domain.models.exam import ExamTest
 
     # Guard: verify bank belongs to the calling user's org (raises 404 if not)
-    await exam_bank_service.get_bank(db, bank_id=bank_id, org_id=_org(user))
+    bank = await exam_bank_service.get_bank(db, bank_id=bank_id, org_id=_org(user))
+    # Self-heal banks that were published before auto-create existed: ensure a published
+    # bank always has at least one test so the action buttons / student flow work.
+    if bank.status == BankStatus.published:
+        await exam_bank_service.ensure_default_test(db, bank=bank, created_by=_uid(user))
     result = await db.execute(select(ExamTest).where(ExamTest.bank_id == bank_id))
     return result.scalars().all()
 

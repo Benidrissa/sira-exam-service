@@ -118,3 +118,35 @@ async def create_test(
     await db.commit()
     await db.refresh(test)
     return test
+
+
+async def ensure_default_test(
+    db: AsyncSession,
+    *,
+    bank: ExamBank,
+    created_by: uuid.UUID,
+) -> ExamTest:
+    """Return the bank's first test, creating a default published test if none exists.
+
+    Idempotent — safe to call on every publish and on every list. Publishing a bank
+    used to leave it with no ``ExamTest`` row, which made the teacher action buttons
+    (Submissions/Schedule/Grading/Copy Student Link) inert and prevented scheduling a
+    test to a class (so students never saw it). This backfills a usable test.
+    """
+    existing = await db.execute(
+        select(ExamTest).where(ExamTest.bank_id == bank.id).limit(1)
+    )
+    test = existing.scalar_one_or_none()
+    if test is not None:
+        return test
+    test = ExamTest(
+        id=uuid.uuid4(),
+        bank_id=bank.id,
+        created_by=created_by,
+        title=bank.title_fr,
+        status=TestStatus.published,  # bank already published → test immediately usable
+    )
+    db.add(test)
+    await db.commit()
+    await db.refresh(test)
+    return test
