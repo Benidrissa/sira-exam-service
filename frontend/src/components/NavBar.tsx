@@ -88,7 +88,7 @@ export function NavBar() {
               <Button variant="default" size="sm" asChild>
                 <Link href={`/${locale}/create`}>
                   <Plus className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">New Exam</span>
+                  <span className="hidden sm:inline">Nouvel examen</span>
                 </Link>
               </Button>
 
@@ -118,7 +118,7 @@ export function NavBar() {
               >
                 <Link href={`/${locale}/proctor/dashboard`}>
                   <Shield className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">Proctor</span>
+                  <span className="hidden sm:inline">Surveillance</span>
                 </Link>
               </Button>
             </>
@@ -134,7 +134,7 @@ export function NavBar() {
             >
               <Link href={`/${locale}/students/me/attempts`}>
                 <BookOpen className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">My Exams</span>
+                <span className="hidden sm:inline">Mes examens</span>
               </Link>
             </Button>
           )}
@@ -145,7 +145,7 @@ export function NavBar() {
               variant={isTeacher ? "secondary" : "success"}
               className="hidden sm:inline-flex"
             >
-              {isTeacher ? "Teacher" : "Student"}
+              {isTeacher ? "Enseignant" : "Étudiant"}
             </Badge>
           )}
 
@@ -154,11 +154,11 @@ export function NavBar() {
             variant="ghost"
             size="sm"
             onClick={logout}
-            title="Log out"
+            title="Se déconnecter"
             className="hover:text-destructive"
           >
             <LogOut className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Logout</span>
+            <span className="hidden sm:inline">Déconnexion</span>
           </Button>
         </nav>
       </div>

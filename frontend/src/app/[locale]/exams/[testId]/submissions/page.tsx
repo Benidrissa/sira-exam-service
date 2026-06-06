@@ -48,8 +48,8 @@ function groupByClass(submissions: AttemptSubmissionSummary[]): ClassGroup[] {
 
 function statusBadge(s: string) {
   return s === "validated"
-    ? <Badge className="bg-green-100 text-green-700">Validated</Badge>
-    : <Badge variant="outline">Pending</Badge>;
+    ? <Badge className="bg-green-100 text-green-700">Validé</Badge>
+    : <Badge variant="outline">En attente</Badge>;
 }
 
 // ─── Course grade preview (FR-4.33) ───────────────────────────────────────────
@@ -82,20 +82,19 @@ function CourseGradePreview({
     <Card>
       <CardContent className="space-y-3 py-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold">Course Grade Preview</h2>
+          <h2 className="text-sm font-semibold">Aperçu des notes du cours</h2>
           <Link
             href={`/${locale}/exams/${thisTest.id}/settings`}
             className="text-xs text-blue-600 hover:underline"
           >
-            Edit weight
+            Modifier le coefficient
           </Link>
         </div>
 
         {overweight && (
           <div className="flex items-center gap-2 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-700">
             <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-            Course exam weights sum to {totalWeight}% (over 100%). Weights are relative, so this is
-            only a heads-up.
+            Les coefficients des examens du cours totalisent {totalWeight}% (supérieur à 100%). Les coefficients sont relatifs, c&apos;est juste une indication.
           </div>
         )}
 
@@ -108,7 +107,7 @@ function CourseGradePreview({
               </tr>
             ))}
             <tr className="border-t">
-              <td className="py-1 font-medium">Total weight</td>
+              <td className="py-1 font-medium">Total des coefficients</td>
               <td className={`py-1 text-right font-medium ${overweight ? "text-amber-700" : ""}`}>
                 {totalWeight}%
               </td>
@@ -117,7 +116,7 @@ function CourseGradePreview({
         </table>
 
         <div className="flex items-center justify-between border-t pt-2 text-sm">
-          <span className="text-muted-foreground">This exam — live class average</span>
+          <span className="text-muted-foreground">Cet examen — moyenne de classe en direct</span>
           <span className="font-medium">
             {classAvg != null ? `${classAvg.toFixed(1)} (≈ ${contribution?.toFixed(1)} weighted)` : "—"}
           </span>
@@ -139,7 +138,7 @@ function ClassSection({
 }) {
   const isArchived = !!group.class_archived_at;
   const [open, setOpen] = useState(!isArchived);
-  const label = group.class_name ?? "Unclassified";
+  const label = group.class_name ?? "Non classifié";
   const [sPage, setSPage] = useState(1);
   const totalPages = Math.max(1, Math.ceil(group.attempts.length / SUBMISSIONS_PAGE_SIZE));
   const pagedAttempts = group.attempts.slice((sPage - 1) * SUBMISSIONS_PAGE_SIZE, sPage * SUBMISSIONS_PAGE_SIZE);
@@ -160,7 +159,7 @@ function ClassSection({
           )}
           {isArchived && (
             <span className="flex items-center gap-1 text-xs font-normal text-muted-foreground">
-              <Archive className="h-3 w-3" /> Archived
+              <Archive className="h-3 w-3" /> Archivée
             </span>
           )}
           <Badge variant="outline" className="text-xs">{group.attempts.length}</Badge>
@@ -179,23 +178,23 @@ function ClassSection({
                   <p className="text-sm">{new Date(s.attempted_at).toLocaleString()}</p>
                 </div>
                 <div className="text-sm space-y-1 text-right">
-                  <p>MCQ: <span className="font-medium">{s.mcq_score?.toFixed(1) ?? "—"}</span></p>
-                  <p>Total: <span className="font-medium">{s.total_score?.toFixed(1) ?? "—"}</span></p>
+                  <p>QCM : <span className="font-medium">{s.mcq_score?.toFixed(1) ?? "—"}</span></p>
+                  <p>Total : <span className="font-medium">{s.total_score?.toFixed(1) ?? "—"}</span></p>
                 </div>
                 <div className="text-xs space-y-1">
-                  <p className="text-amber-600">Pending: {s.pending_count}</p>
-                  <p className="text-blue-600">AI scored: {s.ai_scored_count}</p>
-                  <p className="text-green-600">Reviewed: {s.human_reviewed_count}</p>
+                  <p className="text-amber-600">En attente : {s.pending_count}</p>
+                  <p className="text-blue-600">Noté par IA : {s.ai_scored_count}</p>
+                  <p className="text-green-600">Révisé : {s.human_reviewed_count}</p>
                 </div>
                 {statusBadge(s.validation_status)}
                 <div className="flex gap-2">
                   <Link href={`/${locale}/exams/${testId}/submissions/${s.attempt_id}`}>
-                    <Button size="sm" variant="outline">Review →</Button>
+                    <Button size="sm" variant="outline">Réviser →</Button>
                   </Link>
                   {s.validation_status === "pending" && (
                     <Button size="sm" onClick={() => validateMutation.mutate(s.attempt_id)}
                       disabled={validateMutation.isPending}>
-                      Validate
+                      Valider
                     </Button>
                   )}
                 </div>
@@ -252,7 +251,7 @@ export default function SubmissionsPage() {
     onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ["submissions", testId] });
       setSelected(new Set());
-      const msg = `Validated ${res.validated_count} attempt(s).${res.errors.length ? ` ${res.errors.length} skipped.` : ""}`;
+      const msg = `${res.validated_count} tentative(s) validée(s).${res.errors.length ? ` ${res.errors.length} ignorée(s).` : ""}`;
       setBatchMsg(msg);
       toast.success(msg);
     },
@@ -261,7 +260,7 @@ export default function SubmissionsPage() {
 
   const validateMutation = useMutation({
     mutationFn: (attemptId: string) => validateAttempt(attemptId),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["submissions", testId] }); toast.success("Attempt validated"); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["submissions", testId] }); toast.success("Tentative validée"); },
     onError: (e) => toast.error(formatError(e)),
   });
 
@@ -294,7 +293,7 @@ export default function SubmissionsPage() {
 
   return (
     <main className="max-w-5xl mx-auto p-8 space-y-4">
-      <h1 className="text-2xl font-bold">Student Submissions</h1>
+      <h1 className="text-2xl font-bold">Copies des étudiants</h1>
 
       {thisTest && courseTests && (
         <CourseGradePreview
@@ -309,23 +308,23 @@ export default function SubmissionsPage() {
       {(submissions ?? []).length > 0 && (
         <div className="flex flex-col sm:flex-row gap-3">
           <Input
-            placeholder="Search by student ID…"
+            placeholder="Rechercher par identifiant étudiant…"
             value={subFilters.search}
             onChange={e => setSubFilter("search", e.target.value)}
             className="max-w-xs font-mono text-sm"
           />
           <Select
             options={[
-              { value: "pending", label: "Pending" },
-              { value: "validated", label: "Validated" },
+              { value: "pending", label: "En attente" },
+              { value: "validated", label: "Validé" },
             ]}
-            placeholder="All statuses"
+            placeholder="Tous les statuts"
             value={subFilters.status}
             onChange={e => setSubFilter("status", e.target.value)}
             className="w-40"
           />
           {(subFilters.search || subFilters.status) && (
-            <span className="self-center text-sm text-muted-foreground">{filteredTotal} result{filteredTotal !== 1 ? "s" : ""}</span>
+            <span className="self-center text-sm text-muted-foreground">{filteredTotal} résultat{filteredTotal !== 1 ? "s" : ""}</span>
           )}
         </div>
       )}
@@ -334,21 +333,21 @@ export default function SubmissionsPage() {
       {selected.size > 0 && (
         <Card>
           <CardContent className="flex items-center gap-4 py-4">
-            <span className="text-sm font-medium">{selected.size} selected</span>
-            <Input type="number" placeholder="Override score (optional, 0-100)" value={overrideScore}
+            <span className="text-sm font-medium">{selected.size} sélectionné{selected.size !== 1 ? "s" : ""}</span>
+            <Input type="number" placeholder="Note de remplacement (optionnel, 0-100)" value={overrideScore}
               onChange={e => setOverrideScore(e.target.value)} className="w-56" />
             <Button onClick={() => setShowBatchConfirm(true)} disabled={batchMutation.isPending}>
-              {batchMutation.isPending ? "Validating…" : "Batch Validate"}
+              {batchMutation.isPending ? "Validation…" : "Tout valider"}
             </Button>
             <ConfirmDialog
               open={showBatchConfirm}
-              title={`Validate ${selected.size} submission${selected.size !== 1 ? "s" : ""}?`}
-              description="This marks the selected attempts as validated. Scores will become visible to students."
-              confirmLabel="Validate"
+              title={`Valider ${selected.size} copie${selected.size !== 1 ? "s" : ""} ?`}
+              description="Cette action marque les tentatives sélectionnées comme validées. Les notes deviendront visibles pour les étudiants."
+              confirmLabel="Valider"
               onConfirm={() => { setShowBatchConfirm(false); batchMutation.mutate(); }}
               onCancel={() => setShowBatchConfirm(false)}
             />
-            <Button variant="outline" onClick={() => setSelected(new Set())}>Clear</Button>
+            <Button variant="outline" onClick={() => setSelected(new Set())}>Effacer</Button>
           </CardContent>
         </Card>
       )}
@@ -356,7 +355,7 @@ export default function SubmissionsPage() {
       {batchMsg && <p className="text-sm text-green-700">{batchMsg}</p>}
 
       {groups.length === 0 ? (
-        <p className="text-muted-foreground">No submissions yet.</p>
+        <p className="text-muted-foreground">Aucune copie pour le moment.</p>
       ) : (
         <div className="space-y-3">
           {groups.map((g, i) => (

@@ -90,7 +90,7 @@ export default function ReviewBoardPage() {
         setTestLink(link);
       }
       setPublishState("done");
-      toast.success("Exam bank published");
+      toast.success("Banque d'examens publiée.");
     } catch (e) {
       const msg = formatError(e);
       setSaveError(msg);
@@ -113,19 +113,19 @@ export default function ReviewBoardPage() {
       const newQ = await createQuestion(bankId, {
         scenario_id: scenarioId,
         question_type: type,
-        description: type === "mcq" ? "New MCQ question" : "New dissertation question",
+        description: type === "mcq" ? "Nouvelle question QCM" : "Nouvelle question de dissertation",
         options: defaultOptions,
         correct_answer_indices: type === "mcq" ? [0] : undefined,
       });
       setQuestions((prev) => [...prev, newQ]);
     } catch (e) {
-      setSaveError(`Failed to add question: ${e instanceof Error ? e.message : String(e)}`);
+      setSaveError(`Échec de l'ajout de la question : ${e instanceof Error ? e.message : String(e)}`);
     }
   }
 
   if (loading) return (
     <div className="flex items-center justify-center p-12 gap-2 text-sm text-muted-foreground">
-      <LoadingSpinner className="h-4 w-4" /> Loading review board…
+      <LoadingSpinner className="h-4 w-4" /> Chargement du tableau de révision…
     </div>
   );
   if (error) return <p className="p-8 text-sm text-destructive">{error}</p>;
@@ -138,10 +138,10 @@ export default function ReviewBoardPage() {
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold">Review & Edit</h1>
+          <h1 className="text-2xl font-bold">Révision et modification</h1>
           <p className="mt-0.5 text-sm text-muted-foreground">
-            {questions.length} questions · {scenarios.length} scenarios ·{" "}
-            {validatedCount}/{questions.length} validated
+            {questions.length} questions · {scenarios.length} scénarios ·{" "}
+            {validatedCount}/{questions.length} validées
           </p>
         </div>
         <div className="flex flex-col items-end gap-2 shrink-0">
@@ -166,14 +166,14 @@ export default function ReviewBoardPage() {
                 onClick={() => setShowPublishConfirm(true)}
               >
                 {publishState === "publishing" ? (
-                  <><LoadingSpinner className="h-4 w-4" /> Publishing…</>
-                ) : allValidated ? "Publish Bank" : "Validate All & Publish"}
+                  <><LoadingSpinner className="h-4 w-4" /> Publication…</>
+                ) : allValidated ? "Publier la banque" : "Tout valider et publier"}
               </Button>
               <ConfirmDialog
                 open={showPublishConfirm}
-                title={allValidated ? "Publish this exam bank?" : "Validate & publish this exam bank?"}
-                description="Students will be able to access tests from this bank. This action cannot be undone."
-                confirmLabel="Publish"
+                title={allValidated ? "Publier cette banque d'examens ?" : "Valider et publier cette banque d'examens ?"}
+                description="Les étudiants pourront accéder aux tests de cette banque. Cette action est irréversible."
+                confirmLabel="Publier"
                 onConfirm={() => { setShowPublishConfirm(false); handleValidateAll(); }}
                 onCancel={() => setShowPublishConfirm(false)}
               />
@@ -185,8 +185,8 @@ export default function ReviewBoardPage() {
       {/* Zero-questions warning */}
       {questions.length === 0 && (
         <Alert variant="warning">
-          <AlertTitle>No questions yet</AlertTitle>
-          <AlertDescription>No questions generated yet. Go back and trigger generation first.</AlertDescription>
+          <AlertTitle>Aucune question</AlertTitle>
+          <AlertDescription>Aucune question générée pour l&apos;instant. Revenez en arrière et lancez d&apos;abord la génération.</AlertDescription>
         </Alert>
       )}
 
@@ -207,7 +207,7 @@ export default function ReviewBoardPage() {
 
       {scenarios.length === 0 && unassignedQuestions.length === 0 && (
         <p className="text-sm text-muted-foreground text-center py-12">
-          No scenarios generated yet.
+          Aucun scénario généré pour l&apos;instant.
         </p>
       )}
 
@@ -216,7 +216,7 @@ export default function ReviewBoardPage() {
         <ScenarioCard
           key="__uncategorized__"
           bankId={bankId}
-          scenario={{ id: "", bank_id: bankId, title: "Uncategorized", objective: null, context_text: null, context_image_storage_key: null, order_index: 9999, created_at: "", updated_at: "" }}
+          scenario={{ id: "", bank_id: bankId, title: "Non catégorisé", objective: null, context_text: null, context_image_storage_key: null, order_index: 9999, created_at: "", updated_at: "" }}
           questions={unassignedQuestions}
           onQuestionUpdate={(updated) =>
             setQuestions((prev) => prev.map((q) => q.id === updated.id ? updated : q))
@@ -250,7 +250,7 @@ function ScenarioCard({
       if (!scenario.id) return;
       setSaving(true);
       try { await patchScenario(bankId, scenario.id, { title: val }); }
-      catch (e) { onSaveError(`Scenario save failed: ${e instanceof Error ? e.message : String(e)}`); }
+      catch (e) { onSaveError(`Échec de la sauvegarde du scénario : ${e instanceof Error ? e.message : String(e)}`); }
       finally { setSaving(false); }
     }, [bankId, scenario.id, onSaveError]),
     600,
@@ -269,7 +269,7 @@ function ScenarioCard({
               onChange={(e) => { setTitle(e.target.value); saveTitle(e.target.value); }}
             />
           )}
-          {saving && <span className="text-xs text-muted-foreground shrink-0">Saving…</span>}
+          {saving && <span className="text-xs text-muted-foreground shrink-0">Enregistrement…</span>}
         </div>
       </CardHeader>
 
@@ -285,7 +285,7 @@ function ScenarioCard({
             />
           ))}
           {questions.length === 0 && (
-            <p className="py-4 text-center text-xs text-muted-foreground">No questions in this scenario</p>
+            <p className="py-4 text-center text-xs text-muted-foreground">Aucune question dans ce scénario</p>
           )}
         </div>
 
@@ -296,14 +296,14 @@ function ScenarioCard({
             className="text-xs text-muted-foreground hover:text-foreground"
             onClick={() => onQuestionAdd("mcq")}
           >
-            <Plus className="h-3.5 w-3.5 mr-1" /> Add MCQ
+            <Plus className="h-3.5 w-3.5 mr-1" /> Ajouter un QCM
           </Button>
           <Button
             size="sm" variant="ghost"
             className="text-xs text-muted-foreground hover:text-foreground"
             onClick={() => onQuestionAdd("dissertation")}
           >
-            <Plus className="h-3.5 w-3.5 mr-1" /> Add Essay
+            <Plus className="h-3.5 w-3.5 mr-1" /> Ajouter une dissertation
           </Button>
         </div>
       </CardContent>
@@ -342,7 +342,7 @@ function QuestionRow({
       const updated = await patchQuestion(question.id, bankId, data);
       onUpdate(updated);
     } catch (e) {
-      onSaveError(`Save failed: ${e instanceof Error ? e.message : String(e)}`);
+      onSaveError(`Échec de l'enregistrement : ${e instanceof Error ? e.message : String(e)}`);
     } finally { setSaving(false); }
   }
 
@@ -371,7 +371,7 @@ function QuestionRow({
   async function addOption() {
     const labels = ["A", "B", "C", "D", "E", "F"];
     const label = labels[options.length] ?? String(options.length + 1);
-    const next = [...options, { label, text: "New option" }];
+    const next = [...options, { label, text: "Nouvelle option" }];
     setOptions(next);
     await patch({ options: next });
   }
@@ -391,7 +391,7 @@ function QuestionRow({
       const updated = await validateQuestion(question.id, bankId);
       onUpdate(updated);
     } catch (e) {
-      onSaveError(`Validate failed: ${e instanceof Error ? e.message : String(e)}`);
+      onSaveError(`Échec de la validation : ${e instanceof Error ? e.message : String(e)}`);
     } finally { setValidating(false); }
   }
 
@@ -417,14 +417,14 @@ function QuestionRow({
           />
         </div>
         <div className="flex flex-col items-end gap-1.5 shrink-0">
-          {saving && <span className="text-xs text-muted-foreground">Saving…</span>}
+          {saving && <span className="text-xs text-muted-foreground">Enregistrement…</span>}
           {question.validated ? (
             <Badge variant="success">
-              <CheckCircle2 className="mr-1 h-3 w-3" /> Validated
+              <CheckCircle2 className="mr-1 h-3 w-3" /> Validé
             </Badge>
           ) : (
             <Button size="sm" variant="outline" onClick={handleValidate} disabled={validating}>
-              {validating ? <LoadingSpinner className="h-3 w-3" /> : "Validate"}
+              {validating ? <LoadingSpinner className="h-3 w-3" /> : "Valider"}
             </Button>
           )}
         </div>
@@ -439,7 +439,7 @@ function QuestionRow({
               <div key={i} className="flex items-center gap-2 group">
                 {/* Correct-answer toggle */}
                 <button
-                  title={isCorrect ? "Mark as wrong" : "Mark as correct answer"}
+                  title={isCorrect ? "Marquer comme incorrect" : "Marquer comme bonne réponse"}
                   onClick={() => toggleCorrect(i)}
                   className={cn(
                     "h-4 w-4 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors",
@@ -474,7 +474,7 @@ function QuestionRow({
                 />
                 {/* Remove option */}
                 <button
-                  title="Remove option"
+                  title="Supprimer l'option"
                   onClick={() => removeOption(i)}
                   className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-all"
                 >
@@ -489,7 +489,7 @@ function QuestionRow({
               onClick={addOption}
               className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary transition-colors mt-1"
             >
-              <Plus className="h-3 w-3" /> Add option
+              <Plus className="h-3 w-3" /> Ajouter une option
             </button>
           )}
         </div>
@@ -503,7 +503,7 @@ function QuestionRow({
             className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
           >
             {rubricOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-            Rubric ({question.rubric.length} criteria)
+            Barème ({question.rubric.length} critères)
           </button>
           {rubricOpen && (
             <div className="mt-2 space-y-1.5">
