@@ -70,9 +70,9 @@ function TeacherGradingView({ testId, locale }: { testId: string; locale: string
   if (error) return <p className="p-8 text-sm text-destructive">{formatError(error)}</p>;
   if (!answers || answers.length === 0) return (
     <div className="max-w-2xl mx-auto p-8 space-y-4">
-      <p className="text-sm text-muted-foreground">No dissertation answers pending review.</p>
+      <p className="text-sm text-muted-foreground">Aucune réponse de dissertation en attente de correction.</p>
       <Button variant="outline" onClick={() => router.push(`/${locale}/`)}>
-        <Home className="mr-2 h-4 w-4" /> Return Home
+        <Home className="mr-2 h-4 w-4" /> Retour à l&apos;accueil
       </Button>
     </div>
   );
@@ -81,26 +81,26 @@ function TeacherGradingView({ testId, locale }: { testId: string; locale: string
     <main className="max-w-3xl mx-auto p-8 space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">Dissertation Grading</h1>
+          <h1 className="text-2xl font-bold">Notation des dissertations</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            {answers.length} answer{answers.length !== 1 ? "s" : ""} to review.
-            {hasPending(answers) && " Auto-refreshing while AI is grading…"}
+            {answers.length} réponse{answers.length !== 1 ? "s" : ""} à corriger.
+            {hasPending(answers) && " Actualisation automatique pendant la notation IA…"}
           </p>
         </div>
         <Select
           options={[
-            { value: "pending", label: "Pending AI" },
-            { value: "ai_scored", label: "AI Scored" },
-            { value: "human_reviewed", label: "Human Reviewed" },
+            { value: "pending", label: "Notation IA en attente" },
+            { value: "ai_scored", label: "Noté par l'IA" },
+            { value: "human_reviewed", label: "Revu par l'enseignant" },
           ]}
-          placeholder="All statuses"
+          placeholder="Tous les statuts"
           value={gradingFilters.status}
           onChange={e => setGradingFilter("status", e.target.value)}
           className="w-44"
         />
       </div>
 
-      {gradingTotal === 0 && <p className="text-sm text-muted-foreground">No answers match this filter.</p>}
+      {gradingTotal === 0 && <p className="text-sm text-muted-foreground">Aucune réponse ne correspond à ce filtre.</p>}
 
       {gradingPage.map((answer, idx) => (
         <GradingCard
@@ -120,7 +120,7 @@ function TeacherGradingView({ testId, locale }: { testId: string; locale: string
 
       <div className="flex justify-center pt-4">
         <Button variant="outline" onClick={() => router.push(`/${locale}/`)}>
-          <Home className="mr-2 h-4 w-4" /> Return Home
+          <Home className="mr-2 h-4 w-4" /> Retour à l&apos;accueil
         </Button>
       </div>
 
@@ -164,7 +164,7 @@ function GradingCard({
 
   const mutation = useMutation({
     mutationFn: () => patchHumanScore(answer.id, buildPayload()),
-    onSuccess: (updated) => { onUpdated(updated); setSaveError(null); setIsEditing(false); toast.success("Score saved"); },
+    onSuccess: (updated) => { onUpdated(updated); setSaveError(null); setIsEditing(false); toast.success("Note enregistrée"); },
     onError: (e) => { const msg = formatError(e); setSaveError(msg); toast.error(msg); },
   });
 
@@ -175,15 +175,15 @@ function GradingCard({
   } as const;
 
   const statusLabel = {
-    pending: "AI grading…",
-    ai_scored: "AI Scored",
-    human_reviewed: "Human Reviewed",
+    pending: "Notation IA…",
+    ai_scored: "Noté par l'IA",
+    human_reviewed: "Revu par l'enseignant",
   }[answer.status];
 
   return (
     <Card>
       <CardHeader className="flex-row items-center justify-between space-y-0 pb-4">
-        <span className="text-sm font-medium text-muted-foreground">Answer {index}</span>
+        <span className="text-sm font-medium text-muted-foreground">Réponse {index}</span>
         <Badge variant={statusVariant[answer.status]}>
           {answer.status === "human_reviewed" && <CheckCircle2 className="mr-1 h-3 w-3" />}
           {answer.status === "pending" && <LoadingSpinner className="mr-1 h-3 w-3" />}
@@ -197,7 +197,7 @@ function GradingCard({
           <div className="flex items-center gap-1.5 mb-2">
             <User className="h-3.5 w-3.5 text-muted-foreground" />
             <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              Student Answer
+              Réponse de l&apos;étudiant
             </span>
           </div>
           <div className="bg-muted rounded-lg p-3 max-h-40 overflow-y-auto">
@@ -210,20 +210,20 @@ function GradingCard({
         {/* AI scoring */}
         {answer.status === "pending" ? (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <LoadingSpinner className="h-4 w-4" /> AI grading in progress…
+            <LoadingSpinner className="h-4 w-4" /> Notation IA en cours…
           </div>
         ) : answer.ai_score != null && (
           <div className="space-y-2">
             <div className="flex items-center gap-2">
               <Award className="h-4 w-4 text-muted-foreground" />
-              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">AI Score</span>
+              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Note IA</span>
               <Badge variant="info" className="ml-1 font-mono">
                 {answer.ai_score.toFixed(1)} / 100
               </Badge>
             </div>
             {answer.ai_feedback && (
               <div className="rounded-lg border bg-muted/30 px-3 py-2">
-                <p className="text-xs font-medium text-muted-foreground mb-1">AI Feedback</p>
+                <p className="text-xs font-medium text-muted-foreground mb-1">Commentaire IA</p>
                 <p className="text-sm text-muted-foreground italic">{answer.ai_feedback}</p>
               </div>
             )}
@@ -237,15 +237,15 @@ function GradingCard({
           <div className="space-y-2">
             <div className="flex items-center gap-2">
               <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-              <span className="text-sm font-medium">Final score: {answer.human_score} / 100</span>
-              <Badge variant="success">Human Reviewed</Badge>
+              <span className="text-sm font-medium">Note finale : {answer.human_score} / 100</span>
+              <Badge variant="success">Revu par l&apos;enseignant</Badge>
               <Button
                 size="sm"
                 variant="ghost"
                 className="ml-auto h-7 px-2 text-xs"
                 onClick={() => setIsEditing(true)}
               >
-                <Pencil className="mr-1 h-3 w-3" /> Edit Override
+                <Pencil className="mr-1 h-3 w-3" /> Modifier
               </Button>
             </div>
             {answer.human_feedback && (
@@ -255,11 +255,11 @@ function GradingCard({
         ) : (
           <div className="space-y-3">
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              Teacher Override
+              Note de l&apos;enseignant
             </p>
             <div className="flex items-center gap-3">
               <Label htmlFor={`score-${answer.id}`} className="text-sm shrink-0">
-                Score (0–100)
+                Note (0–100)
               </Label>
               <Input
                 id={`score-${answer.id}`}
@@ -270,7 +270,7 @@ function GradingCard({
               />
             </div>
             <Textarea
-              placeholder="Feedback for the student…"
+              placeholder="Commentaire pour l'étudiant…"
               rows={3}
               value={humanFeedback}
               onChange={(e) => setHumanFeedback(e.target.value)}
@@ -280,11 +280,11 @@ function GradingCard({
 
             <div className="space-y-2">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                Override AI Assessment (optional)
+                Remplacer l&apos;évaluation IA (optionnel)
               </p>
               <div className="flex items-center gap-3">
                 <Label htmlFor={`ai-score-${answer.id}`} className="text-sm shrink-0">
-                  AI Score (0–100)
+                  Note IA (0–100)
                 </Label>
                 <Input
                   id={`ai-score-${answer.id}`}
@@ -295,7 +295,7 @@ function GradingCard({
                 />
               </div>
               <Textarea
-                placeholder="Override AI comment…"
+                placeholder="Remplacer le commentaire IA…"
                 rows={4}
                 value={aiFeedbackOverride}
                 onChange={(e) => setAiFeedbackOverride(e.target.value)}
@@ -315,7 +315,7 @@ function GradingCard({
             onClick={() => mutation.mutate()}
           >
             {mutation.isPending ? <LoadingSpinner className="mr-2 h-4 w-4" /> : <Save className="mr-2 h-4 w-4" />}
-            Save & Release
+            Enregistrer &amp; publier
           </Button>
           {isEditing && (
             <Button
@@ -324,7 +324,7 @@ function GradingCard({
               disabled={mutation.isPending}
               onClick={() => { setIsEditing(false); setSaveError(null); }}
             >
-              <X className="mr-1 h-3 w-3" /> Cancel
+              <X className="mr-1 h-3 w-3" /> Annuler
             </Button>
           )}
         </CardFooter>
@@ -345,17 +345,17 @@ function StudentResultsView({ locale, score, total }: {
       <div className="flex items-center gap-3">
         <CheckCircle2 className="h-8 w-8 text-emerald-500 shrink-0" />
         <div>
-          <h1 className="text-2xl font-bold">Exam Submitted</h1>
-          <p className="text-sm text-muted-foreground">Your answers have been recorded successfully.</p>
+          <h1 className="text-2xl font-bold">Examen soumis</h1>
+          <p className="text-sm text-muted-foreground">Vos réponses ont été enregistrées avec succès.</p>
         </div>
-        <Badge variant="warning" className="ml-auto shrink-0">Awaiting review</Badge>
+        <Badge variant="warning" className="ml-auto shrink-0">En attente de correction</Badge>
       </div>
 
       <Alert>
         <Info className="h-4 w-4" />
         <AlertDescription>
-          Your final result will be communicated by your teacher once all grading — including
-          the review of written answers — is complete.
+          Votre résultat final vous sera communiqué par votre enseignant une fois toute la notation — y compris
+          la correction des réponses rédigées — terminée.
         </AlertDescription>
       </Alert>
 
@@ -363,21 +363,21 @@ function StudentResultsView({ locale, score, total }: {
         <Card>
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-base">Automatic scoring — MCQ</CardTitle>
-              <Badge variant="secondary" className="text-xs">Preliminary</Badge>
+              <CardTitle className="text-base">Notation automatique — QCM</CardTitle>
+              <Badge variant="secondary" className="text-xs">Préliminaire</Badge>
             </div>
-            <CardDescription>Multiple-choice questions are scored automatically.</CardDescription>
+            <CardDescription>Les questions à choix multiples sont notées automatiquement.</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="flex items-end gap-2">
               <span className="text-4xl font-bold tabular-nums">{score}</span>
               {total != null && (
-                <span className="text-lg text-muted-foreground mb-1">/ {total} questions</span>
+                <span className="text-lg text-muted-foreground mb-1">/ {total} question{total !== 1 ? "s" : ""}</span>
               )}
             </div>
             {total != null && total > 0 && (
               <p className="mt-2 text-sm text-muted-foreground">
-                {Math.round((score / total) * 100)}% correct
+                {Math.round((score / total) * 100)}% de bonnes réponses
               </p>
             )}
           </CardContent>
@@ -388,20 +388,20 @@ function StudentResultsView({ locale, score, total }: {
         <CardHeader className="flex-row items-center gap-3 space-y-0">
           <FileText className="h-5 w-5 text-primary shrink-0" />
           <div>
-            <CardTitle className="text-base">Written answers — Teacher review</CardTitle>
+            <CardTitle className="text-base">Réponses rédigées — Correction par l&apos;enseignant</CardTitle>
             <CardDescription>
-              Your essays are first graded by AI, then reviewed and validated by your teacher.
+              Vos dissertations sont d&apos;abord notées par l&apos;IA, puis revues et validées par votre enseignant.
             </CardDescription>
           </div>
         </CardHeader>
         <CardContent className="space-y-2">
           <div className="flex items-center gap-2">
             <Clock className="h-4 w-4 text-amber-500" />
-            <Badge variant="warning">Pending teacher review</Badge>
+            <Badge variant="warning">En attente de correction par l&apos;enseignant</Badge>
           </div>
           <p className="text-sm text-muted-foreground">
-            Your teacher will communicate your written scores and feedback directly.
-            This is the authoritative grading step — the final result depends on it.
+            Votre enseignant vous communiquera vos notes et commentaires pour les réponses rédigées.
+            C&apos;est l&apos;étape de notation de référence — le résultat final en dépend.
           </p>
         </CardContent>
       </Card>
@@ -409,7 +409,7 @@ function StudentResultsView({ locale, score, total }: {
       <Separator />
       <div className="flex justify-center">
         <Button variant="outline" onClick={() => router.push(`/${locale}/`)}>
-          <Home className="mr-2 h-4 w-4" /> Return Home
+          <Home className="mr-2 h-4 w-4" /> Retour à l&apos;accueil
         </Button>
       </div>
     </main>
@@ -440,14 +440,14 @@ function ResultsContent() {
       <div className="flex justify-center mt-20">
         <Card className="w-full max-w-md text-center">
           <CardHeader>
-            <CardTitle>No results found</CardTitle>
+            <CardTitle>Aucun résultat trouvé</CardTitle>
             <CardDescription>
-              This exam has not been submitted yet, or your session has expired.
+              Cet examen n&apos;a pas encore été soumis, ou votre session a expiré.
             </CardDescription>
           </CardHeader>
           <CardFooter className="justify-center">
             <Button onClick={() => router.push(`/${effectiveLocale}/`)}>
-              <Home className="mr-2 h-4 w-4" /> Return Home
+              <Home className="mr-2 h-4 w-4" /> Retour à l&apos;accueil
             </Button>
           </CardFooter>
         </Card>
@@ -464,7 +464,7 @@ export default function ResultsPage() {
     <Suspense
       fallback={
         <div className="flex justify-center mt-20 text-sm text-muted-foreground">
-          Loading…
+          Chargement…
         </div>
       }
     >

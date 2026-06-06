@@ -55,10 +55,10 @@ function timeAgo(iso: string) {
   const d = Math.floor(diff / 86400000);
   const h = Math.floor(diff / 3600000);
   const m = Math.floor(diff / 60000);
-  if (d > 0) return `${d}d ago`;
-  if (h > 0) return `${h}h ago`;
-  if (m > 0) return `${m}m ago`;
-  return "just now";
+  if (d > 0) return `il y a ${d} j`;
+  if (h > 0) return `il y a ${h} h`;
+  if (m > 0) return `il y a ${m} min`;
+  return "à l'instant";
 }
 
 const STATUS_BADGE_VARIANT: Record<BankStatus, "secondary" | "warning" | "success" | "outline"> = {
@@ -67,6 +67,14 @@ const STATUS_BADGE_VARIANT: Record<BankStatus, "secondary" | "warning" | "succes
   review: "warning",
   published: "success",
   archived: "outline",
+};
+
+const STATUS_LABEL_FR: Record<BankStatus, string> = {
+  draft: "Brouillon",
+  generating: "Génération",
+  review: "Révision",
+  published: "Publié",
+  archived: "Archivé",
 };
 
 /* ── teacher view ───────────────────────────────────────────── */
@@ -103,7 +111,7 @@ function TeacherDashboard({ locale }: { locale: string }) {
     return (
       <Alert variant="destructive">
         <AlertCircle className="h-4 w-4" />
-        <AlertTitle>Failed to load exam banks</AlertTitle>
+        <AlertTitle>Échec du chargement des banques d&apos;examens</AlertTitle>
         <AlertDescription className="mt-2 flex flex-col gap-2">
           <span>{String(error)}</span>
           <Button
@@ -112,7 +120,7 @@ function TeacherDashboard({ locale }: { locale: string }) {
             className="w-fit border-destructive/40 text-destructive hover:bg-destructive/10"
             onClick={() => refetch()}
           >
-            Retry
+            Réessayer
           </Button>
         </AlertDescription>
       </Alert>
@@ -124,13 +132,13 @@ function TeacherDashboard({ locale }: { locale: string }) {
       {/* Page heading */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">My Exam Banks</h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">{allBanks.length} bank{allBanks.length !== 1 ? "s" : ""} total</p>
+          <h1 className="text-2xl font-bold">Mes banques d&apos;examens</h1>
+          <p className="mt-0.5 text-sm text-muted-foreground">{allBanks.length} banque{allBanks.length !== 1 ? "s" : ""} au total</p>
         </div>
         <Button asChild variant="default">
           <Link href={`/${locale}/create`}>
             <Plus />
-            New Exam
+            Nouvel examen
           </Link>
         </Button>
       </div>
@@ -138,20 +146,20 @@ function TeacherDashboard({ locale }: { locale: string }) {
       {/* Filter bar */}
       <div className="flex flex-col sm:flex-row gap-3">
         <Input
-          placeholder="Search by title…"
+          placeholder="Rechercher par titre…"
           value={filters.search}
           onChange={(e) => setFilter("search", e.target.value)}
           className="max-w-xs"
         />
         <Select
           options={[
-            { value: "draft", label: "Draft" },
-            { value: "generating", label: "Generating" },
-            { value: "review", label: "Review" },
-            { value: "published", label: "Published" },
-            { value: "archived", label: "Archived" },
+            { value: "draft", label: "Brouillon" },
+            { value: "generating", label: "Génération" },
+            { value: "review", label: "Révision" },
+            { value: "published", label: "Publié" },
+            { value: "archived", label: "Archivé" },
           ]}
-          placeholder="All statuses"
+          placeholder="Tous les statuts"
           value={filters.status}
           onChange={(e) => setFilter("status", e.target.value)}
           className="w-44"
@@ -166,18 +174,18 @@ function TeacherDashboard({ locale }: { locale: string }) {
               <FileText className="h-7 w-7 text-muted-foreground" />
             </div>
             <div>
-              <h3 className="text-base font-semibold">No exam banks yet</h3>
-              <p className="mt-1 text-sm text-muted-foreground">Create your first exam bank to get started</p>
+              <h3 className="text-base font-semibold">Aucune banque d&apos;examens</h3>
+              <p className="mt-1 text-sm text-muted-foreground">Créez votre première banque d&apos;examens pour commencer</p>
             </div>
             <Button asChild variant="default">
-              <Link href={`/${locale}/create`}><Plus />New Exam</Link>
+              <Link href={`/${locale}/create`}><Plus />Nouvel examen</Link>
             </Button>
           </CardContent>
         </Card>
       )}
 
       {allBanks.length > 0 && total === 0 && (
-        <p className="text-sm text-muted-foreground">No banks match your filters.</p>
+        <p className="text-sm text-muted-foreground">Aucune banque ne correspond à vos filtres.</p>
       )}
 
       {/* Paginated list */}
@@ -210,13 +218,13 @@ function BankCard({ bank, locale }: { bank: ExamBank; locale: string }) {
   async function copyTestLink() {
     setCopyError(null);
     try {
-      if (!testId) throw new Error("No tests found for this bank");
+      if (!testId) throw new Error("Aucun test trouvé pour cette banque");
       const url = `${window.location.origin}/${locale}/exams/${testId}/play`;
       await navigator.clipboard.writeText(url);
       setCopied(true);
       setTimeout(() => setCopied(false), 2500);
     } catch (e) {
-      setCopyError(e instanceof Error ? e.message : "Could not copy link");
+      setCopyError(e instanceof Error ? e.message : "Impossible de copier le lien");
       setTimeout(() => setCopyError(null), 3000);
     }
   }
@@ -232,7 +240,7 @@ function BankCard({ bank, locale }: { bank: ExamBank; locale: string }) {
               bank.status === "generating" && "animate-pulse"
             )}
           >
-            {bank.status}
+            {STATUS_LABEL_FR[bank.status]}
           </Badge>
         </div>
         <p className="text-xs text-muted-foreground">
@@ -246,7 +254,7 @@ function BankCard({ bank, locale }: { bank: ExamBank; locale: string }) {
         {bank.status === "generating" && (
           <div className="flex items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700">
             <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" />
-            Generating questions…
+            Génération des questions…
           </div>
         )}
 
@@ -256,7 +264,7 @@ function BankCard({ bank, locale }: { bank: ExamBank; locale: string }) {
             {(bank.status === "review" || bank.status === "published") && (
               <Button variant="outline" size="sm" asChild>
                 <Link href={`/${locale}/banks/${bank.id}/review`}>
-                  Review Board
+                  Tableau de révision
                 </Link>
               </Button>
             )}
@@ -264,17 +272,17 @@ function BankCard({ bank, locale }: { bank: ExamBank; locale: string }) {
               <>
                 <Button variant="outline" size="sm" asChild disabled={!testId}>
                   <Link href={testId ? `/${locale}/exams/${testId}/submissions` : "#"}>
-                    Submissions
+                    Copies
                   </Link>
                 </Button>
                 <Button variant="outline" size="sm" asChild disabled={!testId}>
                   <Link href={testId ? `/${locale}/exams/${testId}/assignments` : "#"}>
-                    Schedule
+                    Planifier
                   </Link>
                 </Button>
                 <Button variant="outline" size="sm" asChild disabled={!testId}>
                   <Link href={testId ? `/${locale}/exams/${testId}/results` : "#"}>
-                    Grading
+                    Notation
                   </Link>
                 </Button>
                 <Button
@@ -291,10 +299,10 @@ function BankCard({ bank, locale }: { bank: ExamBank; locale: string }) {
                   {copied ? (
                     <>
                       <CheckCircle className="h-3.5 w-3.5" />
-                      Copied
+                      Copié
                     </>
                   ) : (
-                    "Copy Student Link"
+                    "Copier le lien étudiant"
                   )}
                 </Button>
                 {copyError && (
@@ -304,7 +312,7 @@ function BankCard({ bank, locale }: { bank: ExamBank; locale: string }) {
             )}
             {bank.status === "draft" && (
               <Button variant="outline" size="sm" asChild>
-                <Link href={`/${locale}/create`}>Complete setup</Link>
+                <Link href={`/${locale}/create`}>Terminer la configuration</Link>
               </Button>
             )}
           </div>
@@ -327,17 +335,17 @@ function StudentDashboard({ locale }: { locale: string }) {
       <div className="w-full max-w-lg mx-auto space-y-4">
         <h1 className="text-xl font-bold text-center flex items-center justify-center gap-2">
           <GraduationCap className="h-5 w-5" />
-          My Scheduled Exams
+          Mes examens planifiés
         </h1>
 
         {isLoading && (
-          <p className="text-center text-muted-foreground text-sm">Loading…</p>
+          <p className="text-center text-muted-foreground text-sm">Chargement…</p>
         )}
 
         {!isLoading && (!exams || exams.length === 0) && (
           <Card>
             <CardContent className="py-10 text-center text-muted-foreground text-sm">
-              No exams are currently scheduled for your classes.
+              Aucun examen n&apos;est actuellement planifié pour vos classes.
             </CardContent>
           </Card>
         )}
@@ -349,7 +357,7 @@ function StudentDashboard({ locale }: { locale: string }) {
         <Button variant="outline" size="sm" className="w-full" asChild>
           <Link href={`/${locale}/students/me/attempts`}>
             <ClipboardList className="h-3.5 w-3.5 mr-1" />
-            My Exam History
+            Mon historique d&apos;examens
           </Link>
         </Button>
       </div>
@@ -372,18 +380,18 @@ function ExamScheduleCard({ exam, locale }: { exam: StudentTestSummary; locale: 
       <CardContent className="flex items-center justify-between gap-4">
         <p className="text-xs text-muted-foreground flex items-center gap-1">
           <Clock className="h-3 w-3" />
-          Closes {closes.toLocaleString()}
+          Clôture le {closes.toLocaleString()}
         </p>
         {exam.has_attempted ? (
           <Button size="sm" variant="outline" asChild>
             <Link href={exam.attempt_id ? `/${locale}/attempts/${exam.attempt_id}/review` : "#"}>
-              View Results
+              Voir les résultats
             </Link>
           </Button>
         ) : (
           <Button size="sm" asChild>
             <Link href={`/${locale}/exams/${exam.test_id}/play`}>
-              Start Exam
+              Commencer l&apos;examen
             </Link>
           </Button>
         )}

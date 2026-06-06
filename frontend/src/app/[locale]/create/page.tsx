@@ -36,7 +36,7 @@ import {
 
 type Step = 0 | 1 | 2 | 3;
 
-const STEP_LABELS = ["Exam Info", "Sources", "Scenarios", "Generate"];
+const STEP_LABELS = ["Info examen", "Sources", "Scénarios", "Générer"];
 
 const SOURCE_STATUS_VARIANT: Record<
   ExamSource["extraction_status"],
@@ -86,7 +86,7 @@ export default function CreateExamPage() {
   // ── Step 0 → create bank ──────────────────────────────────────────────────
   async function handleCreateBank() {
     if (!titleFr.trim()) {
-      setError("Title is required");
+      setError("Le titre est requis");
       return;
     }
     setLoading(true);
@@ -146,7 +146,7 @@ export default function CreateExamPage() {
       let attempt = 0;
       const max = 40; // 40 × 5s = 200s
       setPolling(true);
-      setGenStatus("Enqueueing generation…");
+      setGenStatus("Mise en file d'attente de la génération…");
       while (attempt < max) {
         await new Promise((r) => setTimeout(r, 5000));
         attempt++;
@@ -154,7 +154,7 @@ export default function CreateExamPage() {
           const s = await getGenerationStatus(bId);
           if (s.status === "review") {
             setPolling(false);
-            setGenStatus("Done! Redirecting to review board…");
+            setGenStatus("Terminé ! Redirection vers le tableau de révision…");
             setTimeout(() => router.push(`/${locale}/banks/${bId}/review`), 1500);
             return;
           }
@@ -163,13 +163,13 @@ export default function CreateExamPage() {
             setPolling(false);
             return;
           }
-          setGenStatus(`Generating… (${s.progress_pct ?? 0}%)`);
+          setGenStatus(`Génération… (${s.progress_pct ?? 0}%)`);
         } catch {
           /* transient network */
         }
       }
       setPolling(false);
-      setGenError("Timed out after 200 s — check logs.");
+      setGenError("Délai dépassé après 200 s — vérifiez les journaux.");
     },
     [router, locale]
   );
@@ -178,7 +178,7 @@ export default function CreateExamPage() {
     if (!bankId) return;
     const filled = scenarios.filter((s) => s.title.trim());
     if (!filled.length) {
-      setError("Add at least one scenario");
+      setError("Ajoutez au moins un scénario");
       return;
     }
     setLoading(true);
@@ -239,7 +239,7 @@ export default function CreateExamPage() {
       {error && (
         <Alert variant="destructive" className="mb-5">
           <AlertCircle className="h-4 w-4" />
-          <AlertTitle>Error</AlertTitle>
+          <AlertTitle>Erreur</AlertTitle>
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
@@ -247,10 +247,10 @@ export default function CreateExamPage() {
       {/* ── Step 0: Exam Info ── */}
       {step === 0 && (
         <div className="space-y-5">
-          <h2 className="text-xl font-semibold">Exam Info</h2>
+          <h2 className="text-xl font-semibold">Info examen</h2>
 
           <div className="space-y-1.5">
-            <Label htmlFor="title-fr">Title (FR) *</Label>
+            <Label htmlFor="title-fr">Titre (FR) *</Label>
             <Input
               id="title-fr"
               value={titleFr}
@@ -260,7 +260,7 @@ export default function CreateExamPage() {
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="subject">Subject</Label>
+            <Label htmlFor="subject">Matière</Label>
             <Input
               id="subject"
               value={subject}
@@ -271,7 +271,7 @@ export default function CreateExamPage() {
 
           <div className="flex gap-4">
             <div className="flex-1 space-y-1.5">
-              <Label htmlFor="language">Language</Label>
+              <Label htmlFor="language">Langue</Label>
               <select
                 id="language"
                 value={language}
@@ -283,7 +283,7 @@ export default function CreateExamPage() {
               </select>
             </div>
             <div className="flex-1 space-y-1.5">
-              <Label htmlFor="passing-score">Passing score (%)</Label>
+              <Label htmlFor="passing-score">Note de passage (%)</Label>
               <Input
                 id="passing-score"
                 type="number"
@@ -303,10 +303,10 @@ export default function CreateExamPage() {
             {loading ? (
               <>
                 <LoadingSpinner size="sm" />
-                Creating…
+                Création…
               </>
             ) : (
-              "Next: Upload Sources →"
+              "Suivant : Téléverser les sources →"
             )}
           </Button>
         </div>
@@ -315,9 +315,9 @@ export default function CreateExamPage() {
       {/* ── Step 1: Sources ── */}
       {step === 1 && (
         <div className="space-y-5">
-          <h2 className="text-xl font-semibold">Upload Source Documents</h2>
+          <h2 className="text-xl font-semibold">Téléverser les documents sources</h2>
           <p className="text-sm text-muted-foreground">
-            Upload PDF or Word files used as exam reference material.
+            Téléversez des fichiers PDF ou Word utilisés comme documents de référence pour l&apos;examen.
           </p>
 
           {/* Upload zone */}
@@ -325,7 +325,7 @@ export default function CreateExamPage() {
             <FileText className="h-8 w-8 text-muted-foreground" />
             <div>
               <p className="text-sm font-medium">
-                {uploadingFile ? "Uploading…" : "Click to upload PDF or Word"}
+                {uploadingFile ? "Téléversement…" : "Cliquez pour téléverser un PDF ou Word"}
               </p>
               <p className="mt-0.5 text-xs text-muted-foreground">
                 .pdf, .doc, .docx
@@ -359,10 +359,10 @@ export default function CreateExamPage() {
 
           <div className="flex gap-3">
             <Button variant="outline" className="flex-1" onClick={() => go(0)}>
-              ← Back
+              ← Retour
             </Button>
             <Button className="flex-1" onClick={() => go(2)}>
-              Next: Scenarios →
+              Suivant : Scénarios →
             </Button>
           </div>
         </div>
@@ -371,16 +371,16 @@ export default function CreateExamPage() {
       {/* ── Step 2: Scenarios ── */}
       {step === 2 && (
         <div className="space-y-5">
-          <h2 className="text-xl font-semibold">Configure Scenarios</h2>
+          <h2 className="text-xl font-semibold">Configurer les scénarios</h2>
 
           <div className="space-y-1.5">
-            <Label htmlFor="test-objective">Test Objective *</Label>
+            <Label htmlFor="test-objective">Objectif du test *</Label>
             <Textarea
               id="test-objective"
               rows={2}
               value={objective}
               onChange={(e) => setObjective(e.target.value)}
-              placeholder="e.g. Assess understanding of infectious disease management"
+              placeholder="ex. Évaluer la compréhension de la gestion des maladies infectieuses"
             />
           </div>
 
@@ -390,7 +390,7 @@ export default function CreateExamPage() {
               <Card key={i}>
                 <CardHeader className="pb-2">
                   <div className="flex items-center justify-between">
-                    <CardTitle className="text-sm">Scenario {i + 1}</CardTitle>
+                    <CardTitle className="text-sm">Scénario {i + 1}</CardTitle>
                     {scenarios.length > 1 && (
                       <Button
                         variant="ghost"
@@ -405,19 +405,19 @@ export default function CreateExamPage() {
                 </CardHeader>
                 <CardContent className="space-y-3 pt-1">
                   <div className="space-y-1.5">
-                    <Label htmlFor={`sc-title-${i}`}>Title</Label>
+                    <Label htmlFor={`sc-title-${i}`}>Titre</Label>
                     <Input
                       id={`sc-title-${i}`}
-                      placeholder="Scenario title"
+                      placeholder="Titre du scénario"
                       value={sc.title}
                       onChange={(e) => updateScenario(i, "title", e.target.value)}
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <Label htmlFor={`sc-obj-${i}`}>Objective (optional)</Label>
+                    <Label htmlFor={`sc-obj-${i}`}>Objectif (facultatif)</Label>
                     <Input
                       id={`sc-obj-${i}`}
-                      placeholder="Objective"
+                      placeholder="Objectif"
                       value={sc.objective}
                       onChange={(e) =>
                         updateScenario(i, "objective", e.target.value)
@@ -426,7 +426,7 @@ export default function CreateExamPage() {
                   </div>
                   <div className="flex items-center gap-3">
                     <Label htmlFor={`sc-count-${i}`} className="text-xs shrink-0">
-                      Questions:
+                      Questions :
                     </Label>
                     <Input
                       id={`sc-count-${i}`}
@@ -452,12 +452,12 @@ export default function CreateExamPage() {
             className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border py-3 text-sm font-medium text-muted-foreground transition-colors hover:border-primary/50 hover:text-foreground"
           >
             <Plus className="h-4 w-4" />
-            Add Scenario
+            Ajouter un scénario
           </button>
 
           <div className="flex gap-3">
             <Button variant="outline" className="flex-1" onClick={() => go(1)}>
-              ← Back
+              ← Retour
             </Button>
             <Button
               className="flex-1"
@@ -467,12 +467,12 @@ export default function CreateExamPage() {
               {loading ? (
                 <>
                   <LoadingSpinner size="sm" />
-                  Enqueuing…
+                  Mise en file…
                 </>
               ) : (
                 <>
                   <Sparkles className="h-4 w-4" />
-                  Generate Exam
+                  Générer l&apos;examen
                 </>
               )}
             </Button>
@@ -488,7 +488,7 @@ export default function CreateExamPage() {
           </div>
 
           <div>
-            <h2 className="text-xl font-semibold">Generating Your Exam</h2>
+            <h2 className="text-xl font-semibold">Génération de votre examen</h2>
             {genStatus && !genError && (
               <p className="mt-1 text-sm text-muted-foreground">{genStatus}</p>
             )}
@@ -498,7 +498,7 @@ export default function CreateExamPage() {
             <LoadingSpinner size="lg" className="text-primary" />
           )}
 
-          {!polling && !genError && genStatus?.startsWith("Done") && (
+          {!polling && !genError && genStatus?.startsWith("Terminé") && (
             <div className="flex items-center gap-2 text-emerald-600">
               <CheckCircle className="h-5 w-5" />
               <span className="text-sm font-medium">{genStatus}</span>
@@ -508,7 +508,7 @@ export default function CreateExamPage() {
           {genError && (
             <Alert variant="destructive" className="w-full text-left">
               <AlertCircle className="h-4 w-4" />
-              <AlertTitle>Generation failed</AlertTitle>
+              <AlertTitle>Échec de la génération</AlertTitle>
               <AlertDescription className="mt-2 flex flex-col gap-2">
                 <span>{genError}</span>
                 <Button
@@ -517,7 +517,7 @@ export default function CreateExamPage() {
                   className="w-fit border-destructive/40 text-destructive hover:bg-destructive/10"
                   onClick={() => go(2)}
                 >
-                  ← Back to Scenarios
+                  ← Retour aux scénarios
                 </Button>
               </AlertDescription>
             </Alert>

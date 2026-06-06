@@ -73,7 +73,7 @@ function CreateForm({
     },
     onError: (e: unknown) => {
       const msg =
-        e instanceof Error ? e.message : "Failed to create assignment";
+        e instanceof Error ? e.message : "Échec de la création de l'affectation";
       setErr(msg);
     },
   });
@@ -82,11 +82,11 @@ function CreateForm({
     e.preventDefault();
     setErr(null);
     if (!classId || !releasedAt || !closesAt) {
-      setErr("All fields are required.");
+      setErr("Tous les champs sont obligatoires.");
       return;
     }
     if (new Date(closesAt) <= new Date(releasedAt)) {
-      setErr("Close time must be after open time.");
+      setErr("L'heure de clôture doit être postérieure à l'heure d'ouverture.");
       return;
     }
     mutate();
@@ -96,7 +96,7 @@ function CreateForm({
     <Card className="border-primary/30 bg-primary/5">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-base">Assign to class</CardTitle>
+          <CardTitle className="text-base">Affecter à une classe</CardTitle>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
             <X className="h-4 w-4" />
           </button>
@@ -107,7 +107,7 @@ function CreateForm({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {/* Class */}
             <div className="sm:col-span-2">
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Class</label>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Classe</label>
               <select
                 value={classId}
                 onChange={(e) => setClassId(e.target.value)}
@@ -124,7 +124,7 @@ function CreateForm({
 
             {/* Open */}
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Opens at</label>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Ouverture le</label>
               <input
                 type="datetime-local"
                 value={releasedAt}
@@ -136,7 +136,7 @@ function CreateForm({
 
             {/* Close */}
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Closes at</label>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Clôture le</label>
               <input
                 type="datetime-local"
                 value={closesAt}
@@ -148,7 +148,7 @@ function CreateForm({
 
             {/* Quarter */}
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Quarter</label>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Trimestre</label>
               <select
                 value={quarter}
                 onChange={(e) => setQuarter(e.target.value as Quarter)}
@@ -170,11 +170,11 @@ function CreateForm({
 
           <div className="flex justify-end gap-2">
             <Button type="button" variant="outline" size="sm" onClick={onClose} disabled={isPending}>
-              Cancel
+              Annuler
             </Button>
             <Button type="submit" size="sm" disabled={isPending}>
               {isPending ? <LoadingSpinner size="sm" className="mr-1" /> : <Check className="h-3.5 w-3.5 mr-1" />}
-              Assign
+              Affecter
             </Button>
           </div>
         </form>
@@ -214,7 +214,7 @@ function EditRow({
       onClose();
     },
     onError: (e: unknown) => {
-      setErr(e instanceof Error ? e.message : "Failed to update assignment");
+      setErr(e instanceof Error ? e.message : "Échec de la mise à jour de l'affectation");
     },
   });
 
@@ -222,7 +222,7 @@ function EditRow({
     e.preventDefault();
     setErr(null);
     if (new Date(closesAt) <= new Date(releasedAt)) {
-      setErr("Close time must be after open time.");
+      setErr("L'heure de clôture doit être postérieure à l'heure d'ouverture.");
       return;
     }
     mutate();
@@ -232,7 +232,7 @@ function EditRow({
     <form onSubmit={submit} className="space-y-2 p-3 bg-muted/40 rounded-lg">
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <label className="text-xs text-muted-foreground">Opens at</label>
+          <label className="text-xs text-muted-foreground">Ouverture le</label>
           <input
             type="datetime-local"
             value={releasedAt}
@@ -242,7 +242,7 @@ function EditRow({
           />
         </div>
         <div>
-          <label className="text-xs text-muted-foreground">Closes at</label>
+          <label className="text-xs text-muted-foreground">Clôture le</label>
           <input
             type="datetime-local"
             value={closesAt}
@@ -252,7 +252,7 @@ function EditRow({
           />
         </div>
         <div>
-          <label className="text-xs text-muted-foreground">Quarter</label>
+          <label className="text-xs text-muted-foreground">Trimestre</label>
           <select
             value={quarter}
             onChange={(e) => setQuarter(e.target.value as Quarter)}
@@ -268,10 +268,10 @@ function EditRow({
       {err && <p className="text-xs text-destructive">{err}</p>}
       <div className="flex gap-2 justify-end">
         <Button type="button" variant="ghost" size="sm" onClick={onClose} disabled={isPending}>
-          Cancel
+          Annuler
         </Button>
         <Button type="submit" size="sm" disabled={isPending}>
-          {isPending ? <LoadingSpinner size="sm" /> : "Save"}
+          {isPending ? <LoadingSpinner size="sm" /> : "Enregistrer"}
         </Button>
       </div>
     </form>
@@ -302,7 +302,7 @@ function AssignmentRow({
     mutationFn: () => deleteAssignment(testId, assignment.id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["assignments", testId] }),
     onError: (e: unknown) => {
-      setDeleteErr(e instanceof Error ? e.message : "Delete failed");
+      setDeleteErr(e instanceof Error ? e.message : "Échec de la suppression");
       setTimeout(() => setDeleteErr(null), 4000);
     },
   });
@@ -375,15 +375,15 @@ export default function AssignmentsPage() {
       <div className="flex items-center justify-between">
         <div>
           <nav className="text-xs text-muted-foreground mb-1">
-            <Link href={`/${locale}/`} className="hover:underline">Home</Link>
+            <Link href={`/${locale}/`} className="hover:underline">Accueil</Link>
             {" / "}
             <Link href={`/${locale}/exams/${testId}/submissions`} className="hover:underline">Test</Link>
             {" / "}
-            <span>Assignments</span>
+            <span>Affectations</span>
           </nav>
-          <h1 className="text-2xl font-bold">Class Assignments</h1>
+          <h1 className="text-2xl font-bold">Affectations par classe</h1>
           <p className="mt-0.5 text-sm text-muted-foreground">
-            Schedule this test for one or more classes with an open/close window.
+            Planifiez ce test pour une ou plusieurs classes avec une fenêtre d&apos;ouverture/clôture.
           </p>
         </div>
         <Button
@@ -392,7 +392,7 @@ export default function AssignmentsPage() {
           disabled={showCreate || !classes?.length}
         >
           <Plus className="h-3.5 w-3.5 mr-1" />
-          Assign
+          Affecter
         </Button>
       </div>
 
@@ -409,7 +409,7 @@ export default function AssignmentsPage() {
       {!loadingC && (!classes || classes.length === 0) && (
         <Alert>
           <AlertDescription>
-            No classes found. Create a class first before scheduling a test.
+            Aucune classe trouvée. Créez une classe avant de planifier un test.
           </AlertDescription>
         </Alert>
       )}
@@ -433,7 +433,7 @@ export default function AssignmentsPage() {
       {/* List */}
       {!isLoading && assignments && assignments.length === 0 && (
         <p className="text-sm text-muted-foreground text-center py-8">
-          No assignments yet. Click Assign to schedule this test for a class.
+          Aucune planification pour le moment. Cliquez sur Affecter pour planifier ce test pour une classe.
         </p>
       )}
 

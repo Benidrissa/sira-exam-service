@@ -13,10 +13,11 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from fastapi import HTTPException
 
-from app.domain.models.exam import BankStatus, ExamBank
+from app.domain.models.exam import BankStatus, ExamBank, ExamTest, TestStatus
 from app.domain.services.exam_bank_service import (
     create_bank,
     delete_bank,
+    ensure_default_test,
     get_bank,
     list_banks,
     update_bank,
@@ -159,3 +160,56 @@ async def test_delete_bank_sets_archived() -> None:
 
     assert bank.status == BankStatus.archived
     db.commit.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# ensure_default_test — published banks must always have a usable test so the
+# teacher action buttons + student scheduling flow work (UAT bug fix).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_ensure_default_test_creates_when_missing() -> None:
+    db = _mock_db()
+    bank = _make_bank()
+    bank.status = BankStatus.published
+
+    # No existing test for this bank (the bank-row lock SELECT shares this mock; its
+    # result is ignored by the helper)
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.first.return_value = None
+    db.execute = AsyncMock(return_value=mock_result)
+
+    test = await ensure_default_test(db, bank=bank, created_by=USER_ID)
+
+    db.add.assert_called_once()
+    db.commit.assert_called_once()
+    assert test.bank_id == bank.id
+    assert test.title == bank.title_fr
+    assert test.status == TestStatus.published
+    assert test.created_by == USER_ID
+
+
+@pytest.mark.asyncio
+async def test_ensure_default_test_is_idempotent() -> None:
+    db = _mock_db()
+    bank = _make_bank()
+    bank.status = BankStatus.published
+
+    existing = ExamTest(
+        id=uuid.uuid4(),
+        bank_id=bank.id,
+        created_by=USER_ID,
+        title="Examen existant",
+        status=TestStatus.published,
+    )
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.first.return_value = existing
+    db.execute = AsyncMock(return_value=mock_result)
+
+    test = await ensure_default_test(db, bank=bank, created_by=USER_ID)
+
+    # Returns the existing test without creating a duplicate
+    assert test is existing
+    db.add.assert_not_called()
+    db.commit.assert_not_called()
