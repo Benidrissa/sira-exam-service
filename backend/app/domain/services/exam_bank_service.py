@@ -141,9 +141,7 @@ async def ensure_default_test(
     # Serialize per-bank so concurrent callers (e.g. two list GETs) can't both insert.
     await db.execute(select(ExamBank.id).where(ExamBank.id == bank.id).with_for_update())
 
-    existing = await db.execute(
-        select(ExamTest).where(ExamTest.bank_id == bank.id).limit(1)
-    )
+    existing = await db.execute(select(ExamTest).where(ExamTest.bank_id == bank.id).limit(1))
     test = existing.scalars().first()
     if test is not None:
         return test
